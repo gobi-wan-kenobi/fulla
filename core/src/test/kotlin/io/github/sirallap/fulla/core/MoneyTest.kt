@@ -38,6 +38,12 @@ class MoneyTest {
     }
 
     @Test
+    fun `a new household is proposed Canadian dollars`() {
+        assertEquals("CAD", Currency.DEFAULT_FOR_NEW_HOUSEHOLD)
+        assertEquals(2, Currency.require(Currency.DEFAULT_FOR_NEW_HOUSEHOLD).minorUnits)
+    }
+
+    @Test
     fun `different currencies do not mix`() {
         assertFailsWith<IllegalArgumentException> { Money(1, eur) + Money(1, jpy) }
     }

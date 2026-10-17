@@ -15,6 +15,13 @@ data class Currency(val code: String, val minorUnits: Int) {
 
         fun require(code: String): Currency =
             of(code) ?: throw IllegalArgumentException("Unknown currency: $code")
+
+        /**
+         * The currency a new household is proposed when it is created: Canadian
+         * dollars, whatever the phone's region. It is only the starting value of
+         * the field; any other currency Fulla knows can still be typed in.
+         */
+        const val DEFAULT_FOR_NEW_HOUSEHOLD: String = "CAD"
     }
 }
 

@@ -68,9 +68,12 @@ class Formats(
     fun currentPeriod(today: LocalDate = LocalDate.now()): YearMonth = periodRule.daysOfContaining(today)
 
     companion object {
-        /** The currency a new household is proposed, from the phone's region. */
-        fun proposedCurrency(locale: Locale = Locale.getDefault()): String =
-            runCatching { java.util.Currency.getInstance(locale).currencyCode }.getOrNull() ?: "EUR"
+        /**
+         * The currency a new household is proposed: Canadian dollars
+         * ([io.github.sirallap.fulla.core.money.Currency.DEFAULT_FOR_NEW_HOUSEHOLD]),
+         * not the phone's region. The field stays editable.
+         */
+        fun proposedCurrency(): String = io.github.sirallap.fulla.core.money.Currency.DEFAULT_FOR_NEW_HOUSEHOLD
     }
 }
 
