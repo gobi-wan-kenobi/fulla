@@ -12,6 +12,7 @@ import type { Category } from "@/lib/model";
 const cats: Category[] = DEFAULT_CATEGORIES.map((d, i) => ({
   id: `c${i}`, name: d.name.en, applies_to: d.applies_to, parent_id: null, icon: d.icon, color_index: 0, sort: i, archived: false,
 }));
+const KEY = "test-key-not-real-0123456789";
 const item = { id: "t1", date: "2030-03-02", description: "BLUE DOOR CAFE", amount_minor: 1234 };
 const reply = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
 const ANSWER = "Parent Category: Dining & Take\u2011out\nSubcategory: Coffee Shops\nSpending Type: Flexible\nMerchant: BLUE DOOR CAFE";
@@ -105,12 +106,15 @@ describe("the server's call to the model (mocked)", () => {
     const f = vi.fn();
     expect(await askModel([item], {}, f)).toEqual({ results: {}, stopped: "off" });
     expect(await askModel([item], { OPENAI_API_KEY: "  " }, f)).toEqual({ results: {}, stopped: "off" });
+    for (const placeholder of ["[REDACTED]", "changeme", "paste the key here please ok", "k"]) {
+      expect(await askModel([item], { OPENAI_API_KEY: placeholder }, f)).toEqual({ results: {}, stopped: "off" });
+    }
     expect(f).not.toHaveBeenCalled();
   });
 
   it("sends the model, temperature 0.1 and the trained prompt; the key only in the header", async () => {
     const f = vi.fn(async () => reply(ANSWER));
-    const r = await askModel([item, { ...item, id: "t2" }], { OPENAI_API_KEY: "test-key-not-real" }, f as unknown as typeof fetch);
+    const r = await askModel([item, { ...item, id: "t2" }], { OPENAI_API_KEY: KEY }, f as unknown as typeof fetch);
     expect(r.stopped).toBeNull();
     expect(Object.keys(r.results).sort()).toEqual(["t1", "t2"]);
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
@@ -120,20 +124,20 @@ describe("the server's call to the model (mocked)", () => {
     expect(body.temperature).toBe(0.1);
     expect(body.messages[0]).toEqual({ role: "system", content: SYSTEM_PROMPT });
     expect(body.messages[1].content).toBe(userPrompt(item));
-    expect(String(init.body)).not.toContain("test-key-not-real");
-    expect((init.headers as Record<string, string>).authorization).toBe("Bearer test-key-not-real");
+    expect(String(init.body)).not.toContain(KEY);
+    expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${KEY}`);
   });
 
   it("uses FULLA_CATEGORIZER_MODEL when it is set", async () => {
     const f = vi.fn(async () => reply(ANSWER));
-    await askModel([item], { OPENAI_API_KEY: "k", FULLA_CATEGORIZER_MODEL: "ft:some-other-model" }, f as unknown as typeof fetch);
+    await askModel([item], { OPENAI_API_KEY: KEY, FULLA_CATEGORIZER_MODEL: "ft:some-other-model" }, f as unknown as typeof fetch);
     expect(JSON.parse(String((f.mock.calls[0] as unknown as [string, RequestInit])[1].body)).model).toBe("ft:some-other-model");
   });
 
   it("no credit (429 insufficient_quota) stops asking and answers nothing, without throwing", async () => {
     const f = vi.fn(async () => new Response(JSON.stringify({ error: { code: "insufficient_quota" } }), { status: 429 }));
     const items = Array.from({ length: 12 }, (_, i) => ({ ...item, id: `t${i}` }));
-    const r = await askModel(items, { OPENAI_API_KEY: "k" }, f as unknown as typeof fetch);
+    const r = await askModel(items, { OPENAI_API_KEY: KEY }, f as unknown as typeof fetch);
     expect(r).toEqual({ results: {}, stopped: "quota" });
     expect(f.mock.calls.length).toBeLessThanOrEqual(4); // the ones already in flight, no more
   });
@@ -146,7 +150,7 @@ describe("the server's call to the model (mocked)", () => {
       return reply(ANSWER);
     });
     const items = ["LINE ONE", "LINE TWO", "LINE THREE"].map((d, i) => ({ ...item, id: `t${i}`, description: d }));
-    const r = await askModel(items, { OPENAI_API_KEY: "k" }, f as unknown as typeof fetch);
+    const r = await askModel(items, { OPENAI_API_KEY: KEY }, f as unknown as typeof fetch);
     expect(Object.keys(r.results)).toEqual(["t2"]);
     expect(r.stopped).toBe("error");
     expect(f).toHaveBeenCalledTimes(4); // line one tried twice, the others once
@@ -164,18 +168,18 @@ describe("the server's call to the model (mocked)", () => {
       }
       return Promise.resolve(reply(ANSWER));
     });
-    const r = await askModel([item], { OPENAI_API_KEY: "k" }, f as unknown as typeof fetch, { timeoutMs: 20 });
+    const r = await askModel([item], { OPENAI_API_KEY: KEY }, f as unknown as typeof fetch, { timeoutMs: 20 });
     expect(r).toEqual({ results: { t1: expect.objectContaining({ parent: "Dining & Take-out" }) }, stopped: null });
     expect(f).toHaveBeenCalledTimes(2);
 
     let m = 0;
     const g = vi.fn(async () => (++m === 1 ? new Response("{}", { status: 503 }) : reply(ANSWER)));
-    expect(Object.keys((await askModel([item], { OPENAI_API_KEY: "k" }, g as unknown as typeof fetch)).results)).toEqual(["t1"]);
+    expect(Object.keys((await askModel([item], { OPENAI_API_KEY: KEY }, g as unknown as typeof fetch)).results)).toEqual(["t1"]);
     expect(g).toHaveBeenCalledTimes(2);
 
     // A 400 is not a cold start: no second try.
     const h = vi.fn(async () => new Response("{}", { status: 400 }));
-    expect((await askModel([item], { OPENAI_API_KEY: "k" }, h as unknown as typeof fetch)).stopped).toBe("error");
+    expect((await askModel([item], { OPENAI_API_KEY: KEY }, h as unknown as typeof fetch)).stopped).toBe("error");
     expect(h).toHaveBeenCalledTimes(1);
   });
 
@@ -214,7 +218,7 @@ describe("POST /api/categorize (mocked network)", () => {
   });
 
   it("refuses a request without a live Supabase session", async () => {
-    process.env.OPENAI_API_KEY = "k";
+    process.env.OPENAI_API_KEY = KEY;
     const f = vi.fn(async () => new Response("{}", { status: 401 }));
     vi.stubGlobal("fetch", f);
     const { POST } = await import("@/app/api/categorize/route");
@@ -224,7 +228,7 @@ describe("POST /api/categorize (mocked network)", () => {
   });
 
   it("answers a signed-in person", async () => {
-    process.env.OPENAI_API_KEY = "k";
+    process.env.OPENAI_API_KEY = KEY;
     const f = vi.fn(async (url: string) => (String(url).includes("/auth/v1/user") ? new Response("{}", { status: 200 }) : reply(ANSWER)));
     vi.stubGlobal("fetch", f);
     const { POST, GET } = await import("@/app/api/categorize/route");

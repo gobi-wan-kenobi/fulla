@@ -21,8 +21,14 @@ export interface CategorizerEnv {
   OPENAI_BASE_URL?: string;
 }
 
+/**
+ * On when OPENAI_API_KEY looks like an API key: one token of 20 or more key
+ * characters. A placeholder ("[REDACTED]", "changeme", a pasted sentence)
+ * leaves it off, so the app says so instead of failing every call.
+ */
 export function categorizerEnabled(env: CategorizerEnv): boolean {
-  return !!env.OPENAI_API_KEY && env.OPENAI_API_KEY.trim().length > 0;
+  const k = env.OPENAI_API_KEY?.trim() ?? "";
+  return /^[A-Za-z0-9_\-.:]{20,}$/.test(k);
 }
 
 export interface Answered {
