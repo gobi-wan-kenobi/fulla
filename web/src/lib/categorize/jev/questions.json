@@ -1,0 +1,494 @@
+{
+ "model": "jev-1.13.0",
+ "questions": {
+  "parent": {
+   "type": "choice",
+   "instructions": {
+    "question": "Which budget category does `transaction` belong to?",
+    "context": "A transaction from a Canadian household's bank or credit-card statement. Amounts are in CAD. `description` is the statement line as the bank wrote it."
+   },
+   "criteria": {
+    "Transfers": {
+     "what": "Money moved between the household's own accounts or to/from a person: INTERAC e-Transfers to or from individuals, transfers to savings or chequing, paying off a credit card from the bank account, ATM cash withdrawals",
+     "not_for": "Paying a business (pick that business's category); loan payments (Debt Payments); investment contributions (Savings & Investing)",
+     "examples": [
+      "INTERAC e-Transfer To: J SMITH",
+      "Internet Transfer to Savings 1234",
+      "Withdrawal to Savings Account",
+      "Bill Payment - VISA CARD",
+      "ATM WITHDRAWAL 0042"
+     ]
+    },
+    "Income": {
+     "what": "Money coming in: salary and payroll deposits, freelance payments, interest earned, dividends, cashback, refunds and reimbursements from merchants",
+     "not_for": "Moving the household's own money between accounts (Transfers)",
+     "examples": [
+      "PAYROLL DEPOSIT EXAMPLE CORP",
+      "Interest Earned",
+      "Cashback received",
+      "REFUND - ONLINE STORE",
+      "Dividend payment"
+     ]
+    },
+    "Dining & Take-out": {
+     "what": "Food and drink prepared by someone else: restaurants, fast food, coffee shops, bars, food delivery apps",
+     "not_for": "Supermarkets and grocery stores (Groceries)",
+     "examples": [
+      "TIM HORTONS #1234",
+      "STARBUCKS 01234",
+      "MCDONALD'S #12345",
+      "UBER* EATS",
+      "THE LOCAL PUB"
+     ]
+    },
+    "Groceries": {
+     "what": "Supermarkets, grocery stores and farmers markets: food bought to cook at home",
+     "not_for": "Restaurants and take-out (Dining & Take-out); pharmacies (Healthcare)",
+     "examples": [
+      "LOBLAWS #1000",
+      "NO FRILLS 3000",
+      "METRO 123",
+      "FARM BOY #12",
+      "WALMART SUPERCENTER GROCERY"
+     ]
+    },
+    "Entertainment & Recreation": {
+     "what": "Fun and media: streaming services, video games, movies, concerts and sporting events, hobbies, app and software subscriptions",
+     "not_for": "Gym or fitness memberships (Personal Care); travel bookings (Travel & Vacation)",
+     "examples": [
+      "NETFLIX.COM",
+      "SPOTIFY P12345",
+      "STEAM GAMES",
+      "CINEPLEX #1234",
+      "TICKETMASTER CANADA"
+     ]
+    },
+    "Shopping": {
+     "what": "Buying goods: online retail, department stores, clothing and shoes, electronics, toys, gifts and flowers",
+     "not_for": "Groceries; pharmacy and medical items (Healthcare); furniture for the home (Housing)",
+     "examples": [
+      "AMAZON.CA*AB12CD",
+      "WINNERS #123",
+      "BEST BUY #900",
+      "SHEIN",
+      "FLOWER SHOP"
+     ]
+    },
+    "Transportation": {
+     "what": "Getting around: fuel, public transit, rideshare and taxis, parking and tolls, car rental, car repairs",
+     "not_for": "Flights and hotels (Travel & Vacation); auto insurance (Insurance)",
+     "examples": [
+      "PETRO-CANADA 01234",
+      "PRESTO AUTOLOAD",
+      "UBER* TRIP",
+      "IMPARK 00012",
+      "407 ETR"
+     ]
+    },
+    "Debt Payments": {
+     "what": "Paying down debt: credit card balance payments seen on the card itself, student loan and personal loan payments",
+     "not_for": "Moving money from a bank account to pay a credit card (Transfers > Credit-Card Payment)",
+     "examples": [
+      "PAYMENT - THANK YOU",
+      "STUDENT LOAN PAYMENT",
+      "LOAN PAYMENT 0001"
+     ]
+    },
+    "Utilities": {
+     "what": "Household services billed monthly: mobile phone, internet, natural gas and heating, hydro and water",
+     "not_for": "Streaming or app subscriptions (Entertainment & Recreation)",
+     "examples": [
+      "ROGERS ****1234",
+      "BELL CANADA",
+      "ENBRIDGE GAS",
+      "FIDO MOBILE",
+      "TORONTO HYDRO"
+     ]
+    },
+    "Personal Care": {
+     "what": "Looking after yourself: gym memberships, fitness classes, hair and barber, cosmetics and skincare, spa and massage",
+     "not_for": "Prescriptions and doctor visits (Healthcare)",
+     "examples": [
+      "GOODLIFE FITNESS",
+      "SEPHORA #123",
+      "BARBER SHOP",
+      "YOGA STUDIO"
+     ]
+    },
+    "Savings & Investing": {
+     "what": "Putting money into investments: brokerage, TFSA or RRSP contributions, crypto purchases, investment interest and dividends kept in the account",
+     "not_for": "Plain transfers to a savings account (Transfers > To Savings)",
+     "examples": [
+      "WEALTHSIMPLE INVEST CONTRIBUTION",
+      "Crypto buy BTC",
+      "QUESTRADE DEPOSIT"
+     ]
+    },
+    "Miscellaneous Fees": {
+     "what": "Bank and ATM fees, service charges, donations and charity, lottery, postage, office supplies",
+     "not_for": "Interest paid to you (Income)",
+     "examples": [
+      "MONTHLY ACCOUNT FEE",
+      "ATM FEE",
+      "CANADA POST",
+      "CHARITY DONATION",
+      "OLG LOTTERY"
+     ]
+    },
+    "Insurance": {
+     "what": "Insurance premiums: auto, home or tenant, life",
+     "not_for": "Medical bills (Healthcare)",
+     "examples": [
+      "INTACT INSURANCE AUTO",
+      "LIFE INSURANCE PREMIUM",
+      "TD INSURANCE"
+     ]
+    },
+    "Education & Self-Improvement": {
+     "what": "Learning: courses and certificates, tuition, books and e-books, online learning apps",
+     "not_for": "School supplies for children (Child & Dependent Care)",
+     "examples": [
+      "COURSERA",
+      "UDEMY",
+      "KINDLE EBOOK",
+      "DUOLINGO"
+     ]
+    },
+    "Healthcare": {
+     "what": "Medical: pharmacies, prescriptions, doctor and dentist visits, medical devices",
+     "not_for": "Gym, beauty and spa (Personal Care)",
+     "examples": [
+      "SHOPPERS DRUG MART #0001",
+      "REXALL PHARMACY",
+      "DENTAL CLINIC",
+      "WALK-IN CLINIC"
+     ]
+    },
+    "Housing": {
+     "what": "The home: rent or mortgage, condo or HOA fees, home repairs and maintenance, essential furniture",
+     "not_for": "Utilities billed separately (Utilities)",
+     "examples": [
+      "PROPERTY MGMT RENT",
+      "MORTGAGE PAYMENT",
+      "HOME DEPOT #7000",
+      "IKEA",
+      "CONDO FEES"
+     ]
+    },
+    "Travel & Vacation": {
+     "what": "Trips: flights, hotels and other accommodation",
+     "not_for": "Local transit, taxis and fuel (Transportation)",
+     "examples": [
+      "AIR CANADA 0141234567890",
+      "WESTJET",
+      "AIRBNB",
+      "MARRIOTT HOTEL"
+     ]
+    },
+    "Shipping": {
+     "what": "Paying a courier or shipping company to send packages",
+     "not_for": "Online shopping orders (Shopping)",
+     "examples": [
+      "UPS STORE",
+      "FEDEX",
+      "PUROLATOR"
+     ]
+    },
+    "Child & Dependent Care": {
+     "what": "Costs for children or dependants: school supplies, daycare, child care",
+     "not_for": "Adult courses and books (Education & Self-Improvement)",
+     "examples": [
+      "DAYCARE CENTRE",
+      "SCHOOL SUPPLIES STORE"
+     ]
+    }
+   }
+  },
+  "sub__transfers": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Transfers`, which subcategory does `transaction` belong to?",
+    "category": "Transfers: Money moved between the household's own accounts or to/from a person: INTERAC e-Transfers to or from individuals, transfers to savings or chequing, paying off a credit card from the bank account, ATM cash withdrawals"
+   },
+   "criteria": {
+    "P2P Transfer": "INTERAC e-Transfer or other transfer to or from a person",
+    "To Savings": "Moving money from chequing into a savings account",
+    "Credit-Card Payment": "Paying a credit card bill from a bank account",
+    "To Checking": "Moving money into the chequing account from another own account",
+    "Cash Withdrawal": "Taking cash out at an ATM or branch"
+   }
+  },
+  "sub__income": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Income`, which subcategory does `transaction` belong to?",
+    "category": "Income: Money coming in: salary and payroll deposits, freelance payments, interest earned, dividends, cashback, refunds and reimbursements from merchants"
+   },
+   "criteria": {
+    "Refunds & Reimbursements": "A merchant refund, cashback reward, or reimbursement",
+    "Crypto": "Proceeds from selling or earning cryptocurrency",
+    "Interest & Dividends": "Interest earned on a bank account, or dividends",
+    "Salary & Wages": "Payroll deposit from an employer",
+    "Freelance": "Payment for freelance or contract work"
+   }
+  },
+  "sub__dining___take_out": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Dining & Take-out`, which subcategory does `transaction` belong to?",
+    "category": "Dining & Take-out: Food and drink prepared by someone else: restaurants, fast food, coffee shops, bars, food delivery apps"
+   },
+   "criteria": {
+    "Coffee Shops": "Coffee and donut shops such as Tim Hortons or Starbucks",
+    "Fast Food": "Quick-service chains such as McDonald's, burgers, pizza chains",
+    "Restaurants": "Sit-down restaurants and food delivery",
+    "Alcohol & Bars": "Bars, pubs, and liquor stores",
+    "Rideshare/Taxi (commute)": "Rideshare company charges that are really food orders"
+   }
+  },
+  "sub__groceries": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Groceries`, which subcategory does `transaction` belong to?",
+    "category": "Groceries: Supermarkets, grocery stores and farmers markets: food bought to cook at home"
+   },
+   "criteria": {
+    "Supermarket": "Supermarkets and grocery chains",
+    "Farmers Market": "Farmers markets and small produce stands"
+   }
+  },
+  "sub__entertainment___recreation": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Entertainment & Recreation`, which subcategory does `transaction` belong to?",
+    "category": "Entertainment & Recreation: Fun and media: streaming services, video games, movies, concerts and sporting events, hobbies, app and software subscriptions"
+   },
+   "criteria": {
+    "Streaming Subscriptions": "Video and music streaming such as Netflix, Spotify, Disney+",
+    "Video Games": "Games and game stores such as Steam, PlayStation, Xbox",
+    "Sporting Events": "Tickets to games, concerts, and live events",
+    "Subscriptions": "Other recurring app or software subscriptions",
+    "Hobbies & Crafts": "Hobby and craft supplies",
+    "Movies": "Movie theatres such as Cineplex"
+   }
+  },
+  "sub__shopping": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Shopping`, which subcategory does `transaction` belong to?",
+    "category": "Shopping: Buying goods: online retail, department stores, clothing and shoes, electronics, toys, gifts and flowers"
+   },
+   "criteria": {
+    "Online Retail": "Online stores such as Amazon",
+    "Other": "Other general stores and purchases",
+    "Clothing & Shoes": "Clothing, shoes, and accessories stores",
+    "Electronics & Gadgets": "Electronics and gadget stores",
+    "Toys & Treats": "Toys, candy, and small treats",
+    "Gifts & Flowers": "Gift shops and florists"
+   }
+  },
+  "sub__transportation": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Transportation`, which subcategory does `transaction` belong to?",
+    "category": "Transportation: Getting around: fuel, public transit, rideshare and taxis, parking and tolls, car rental, car repairs"
+   },
+   "criteria": {
+    "Fuel": "Gas stations",
+    "Rideshare/Taxi (commute)": "Uber or Lyft rides and taxis",
+    "Public Transit": "Bus, subway, train fares and transit card loads such as PRESTO",
+    "Parking & Tolls": "Parking lots, parking apps, and toll highways",
+    "Car Rental": "Renting a car",
+    "Repairs": "Car repairs and maintenance"
+   }
+  },
+  "sub__debt_payments": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Debt Payments`, which subcategory does `transaction` belong to?",
+    "category": "Debt Payments: Paying down debt: credit card balance payments seen on the card itself, student loan and personal loan payments"
+   },
+   "criteria": {
+    "Credit-Card": "A payment received on the credit card account itself",
+    "Student Loan": "Student loan payment",
+    "Personal Loan": "Personal loan or line of credit payment",
+    "Credit-Card Payment": "A credit card bill payment"
+   }
+  },
+  "sub__utilities": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Utilities`, which subcategory does `transaction` belong to?",
+    "category": "Utilities: Household services billed monthly: mobile phone, internet, natural gas and heating, hydro and water"
+   },
+   "criteria": {
+    "Mobile Phone": "Mobile phone carriers such as Rogers, Fido, Bell, Koodo",
+    "Internet": "Home internet service",
+    "Gas/Heating": "Natural gas and heating such as Enbridge"
+   }
+  },
+  "sub__personal_care": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Personal Care`, which subcategory does `transaction` belong to?",
+    "category": "Personal Care: Looking after yourself: gym memberships, fitness classes, hair and barber, cosmetics and skincare, spa and massage"
+   },
+   "criteria": {
+    "Gym Membership": "Gym and fitness club memberships",
+    "Cosmetics & Skincare": "Cosmetics, beauty, and skincare stores",
+    "Hair & Barber": "Hair salons and barbers",
+    "Fitness Classes": "Yoga, spin, and other drop-in classes",
+    "Spa & Massage": "Spa and massage"
+   }
+  },
+  "sub__savings___investing": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Savings & Investing`, which subcategory does `transaction` belong to?",
+    "category": "Savings & Investing: Putting money into investments: brokerage, TFSA or RRSP contributions, crypto purchases, investment interest and dividends kept in the account"
+   },
+   "criteria": {
+    "Crypto": "Buying cryptocurrency",
+    "Brokerage": "Contributions to an investment, TFSA, or RRSP account",
+    "Interest & Dividends": "Interest or dividends inside an investment account"
+   }
+  },
+  "sub__miscellaneous_fees": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Miscellaneous Fees`, which subcategory does `transaction` belong to?",
+    "category": "Miscellaneous Fees: Bank and ATM fees, service charges, donations and charity, lottery, postage, office supplies"
+   },
+   "criteria": {
+    "Bank & ATM Fees": "Bank account fees, service charges, ATM fees",
+    "Donations": "Donations",
+    "Office Supplies": "Office supplies and printing",
+    "Lottery": "Lottery tickets",
+    "Charitable Donations": "Donations to a registered charity",
+    "Postage": "Postage and mailing"
+   }
+  },
+  "sub__insurance": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Insurance`, which subcategory does `transaction` belong to?",
+    "category": "Insurance: Insurance premiums: auto, home or tenant, life"
+   },
+   "criteria": {
+    "Auto Insurance": "Car insurance premium",
+    "Life": "Life insurance premium"
+   }
+  },
+  "sub__education___self_improvement": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Education & Self-Improvement`, which subcategory does `transaction` belong to?",
+    "category": "Education & Self-Improvement: Learning: courses and certificates, tuition, books and e-books, online learning apps"
+   },
+   "criteria": {
+    "Courses & Certificates": "Courses, tuition, and certificates",
+    "Books & e-Books": "Books and e-books",
+    "Online Learning Apps": "Learning apps such as Duolingo"
+   }
+  },
+  "sub__healthcare": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Healthcare`, which subcategory does `transaction` belong to?",
+    "category": "Healthcare: Medical: pharmacies, prescriptions, doctor and dentist visits, medical devices"
+   },
+   "criteria": {
+    "Prescriptions": "Prescription medication",
+    "Doctor Visits": "Doctor, dentist, or clinic visits",
+    "Medical Devices": "Medical devices and equipment",
+    "Pharmacy": "Pharmacy store purchases such as Shoppers Drug Mart or Rexall"
+   }
+  },
+  "sub__housing": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Housing`, which subcategory does `transaction` belong to?",
+    "category": "Housing: The home: rent or mortgage, condo or HOA fees, home repairs and maintenance, essential furniture"
+   },
+   "criteria": {
+    "Repairs & Maintenance": "Home repair and hardware stores",
+    "HOA / Condo Fees": "Condo or HOA fees",
+    "Essential Furniture": "Furniture for the home",
+    "Rent / Mortgage": "Monthly rent or mortgage payment"
+   }
+  },
+  "sub__travel___vacation": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Travel & Vacation`, which subcategory does `transaction` belong to?",
+    "category": "Travel & Vacation: Trips: flights, hotels and other accommodation"
+   },
+   "criteria": {
+    "Flights": "Airline tickets",
+    "Accommodation": "Hotels, Airbnb, and other lodging"
+   }
+  },
+  "sub__shipping": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Shipping`, which subcategory does `transaction` belong to?",
+    "category": "Shipping: Paying a courier or shipping company to send packages"
+   },
+   "criteria": {
+    "Other": "Courier and shipping charges"
+   }
+  },
+  "sub__child___dependent_care": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category `Child & Dependent Care`, which subcategory does `transaction` belong to?",
+    "category": "Child & Dependent Care: Costs for children or dependants: school supplies, daycare, child care"
+   },
+   "criteria": {
+    "School Supplies": "School supplies for children"
+   }
+  }
+ },
+ "sub_question_ids": {
+  "Transfers": "sub__transfers",
+  "Income": "sub__income",
+  "Dining & Take-out": "sub__dining___take_out",
+  "Groceries": "sub__groceries",
+  "Entertainment & Recreation": "sub__entertainment___recreation",
+  "Shopping": "sub__shopping",
+  "Transportation": "sub__transportation",
+  "Debt Payments": "sub__debt_payments",
+  "Utilities": "sub__utilities",
+  "Personal Care": "sub__personal_care",
+  "Savings & Investing": "sub__savings___investing",
+  "Miscellaneous Fees": "sub__miscellaneous_fees",
+  "Insurance": "sub__insurance",
+  "Education & Self-Improvement": "sub__education___self_improvement",
+  "Healthcare": "sub__healthcare",
+  "Housing": "sub__housing",
+  "Travel & Vacation": "sub__travel___vacation",
+  "Shipping": "sub__shipping",
+  "Child & Dependent Care": "sub__child___dependent_care"
+ },
+ "fulla_keys": {
+  "Transfers": null,
+  "Income": "other_income",
+  "Dining & Take-out": "eating_out",
+  "Groceries": "groceries",
+  "Entertainment & Recreation": "leisure",
+  "Shopping": "shopping",
+  "Transportation": "transport",
+  "Debt Payments": "other",
+  "Utilities": "utilities",
+  "Personal Care": "health",
+  "Savings & Investing": null,
+  "Miscellaneous Fees": "other",
+  "Insurance": "other",
+  "Education & Self-Improvement": "education",
+  "Healthcare": "health",
+  "Housing": "housing",
+  "Travel & Vacation": "leisure",
+  "Shipping": "shopping",
+  "Child & Dependent Care": "other"
+ }
+}
