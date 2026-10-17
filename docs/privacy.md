@@ -75,3 +75,13 @@ checking for or installing an update. Anything else is a bug; please report it.
 - **Camera**: only to scan an invite's QR code, only when you tap "Scan an
   invite". The picture is decoded on the phone and never stored or sent.
 - **Biometrics**: only if you turn on the app lock.
+
+## The web app's optional categorizer
+
+The web app (`web/`) can ask a language model to categorise imported lines
+that no household rule and no known merchant recognised. It is off unless
+whoever deploys the web app sets `OPENAI_API_KEY` on the server. When it is
+on, those lines' date, statement text, amount and account name go from the
+web app's server to OpenAI; nothing else about the household does, and the
+key never reaches the browser. Rules and the known-merchants list run in the
+browser and send nothing anywhere.

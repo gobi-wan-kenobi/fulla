@@ -45,6 +45,7 @@ export function Main(props: {
               await household.saveTransaction(tx, editing);
               setEditing(null);
             }}
+            onConfig={household.setConfig}
             onDelete={async () => {
               await household.deleteTransaction(editing);
               setEditing(null);
@@ -52,13 +53,13 @@ export function Main(props: {
             onClose={() => setEditing(null)}
           />
         ) : tab === "add" ? (
-          <EntryScreen config={config} onSave={(tx) => household.saveTransaction(tx)} />
+          <EntryScreen config={config} onSave={(tx) => household.saveTransaction(tx)} onConfig={household.setConfig} />
         ) : tab === "history" ? (
-          <HistoryScreen config={config} rows={household.rows} syncing={household.syncing} error={household.error} onOpen={setEditing} onRefresh={household.sync} />
+          <HistoryScreen config={config} rows={household.rows} syncing={household.syncing} error={household.error} onOpen={setEditing} onRefresh={household.sync} onBulk={household.saveTransactions} />
         ) : tab === "import" ? (
           <ImportScreen config={config} rows={household.rows} onImport={household.importTransactions} onConfig={household.setConfig} />
         ) : (
-          <SettingsScreen config={config} households={props.households} onSwitch={props.onSwitch} onSignOut={props.onSignOut} onAddHousehold={props.onAddHousehold} />
+          <SettingsScreen config={config} households={props.households} rows={household.rows} onConfig={household.setConfig} onBulk={household.saveTransactions} onSwitch={props.onSwitch} onSignOut={props.onSignOut} onAddHousehold={props.onAddHousehold} />
         )}
       </div>
       {!editing && (

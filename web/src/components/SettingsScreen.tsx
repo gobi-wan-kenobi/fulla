@@ -1,21 +1,31 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 "use client";
+import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { api, type Membership } from "@/lib/api";
-import type { Config } from "@/lib/model";
+import type { Config, Transaction } from "@/lib/model";
+import type { LocalRow } from "@/lib/sync";
 import { Avatar, Chip, ScreenHeader, Section, SecondaryButton } from "./Pieces";
+import { RulesScreen } from "./RulesScreen";
 
-export function SettingsScreen({ config, households, onSwitch, onSignOut, onAddHousehold }: {
+export function SettingsScreen({ config, households, rows, onConfig, onBulk, onSwitch, onSignOut, onAddHousehold }: {
   config: Config;
   households: Membership[];
+  rows: LocalRow[];
+  onConfig: (c: Config) => void;
+  onBulk: (changes: { tx: Transaction; existing: LocalRow }[]) => Promise<number>;
   onSwitch: (id: string) => void;
   onSignOut: () => void;
   onAddHousehold: () => void;
 }) {
+  const [rules, setRules] = useState(false);
   const [invite, setInvite] = useState<{ code: string; expires_at: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const me = config.members.find((m) => m.id === config.me_member_id);
   const canInvite = me?.role === "owner" || me?.role === "admin";
+  const ruleCount = (config.categorization_rules ?? []).filter((r) => !r.archived).length;
+
+  if (rules) return <RulesScreen config={config} rows={rows} onConfig={onConfig} onBulk={onBulk} onClose={() => setRules(false)} />;
 
   return (
     <div>
@@ -61,6 +71,14 @@ export function SettingsScreen({ config, households, onSwitch, onSignOut, onAddH
           )}
         </div>
       )}
+      <Section>Categories</Section>
+      <button type="button" data-testid="open-rules" onClick={() => setRules(true)} className="w-full flex items-center justify-between px-5 py-3 text-left yields">
+        <div>
+          <div className="t-body">Rules, fixed and flexible</div>
+          <div className="t-secondary text-ink-muted">{ruleCount} rule{ruleCount === 1 ? "" : "s"} · how imports are sorted</div>
+        </div>
+        <ChevronRight size={20} className="text-ink-muted" />
+      </button>
       <Section>Accounts</Section>
       {config.accounts.filter((a) => !a.archived).map((a) => (
         <div key={a.id} className="px-5 py-2 t-body">{a.name} <span className="t-secondary text-ink-muted">· {a.type.replace("_", " ")}</span></div>
@@ -70,7 +88,7 @@ export function SettingsScreen({ config, households, onSwitch, onSignOut, onAddH
         <SecondaryButton onClick={onAddHousehold}>Another household</SecondaryButton>
         <SecondaryButton danger onClick={onSignOut}>Sign out</SecondaryButton>
       </div>
-      <p className="t-label text-ink-muted px-5 pb-8">Fulla is free software (GPL-3.0-or-later). Accounts, categories and rules are edited in the Android app for now.</p>
+      <p className="t-label text-ink-muted px-5 pb-8">Fulla is free software (GPL-3.0-or-later). Accounts and category names are edited in the Android app for now.</p>
     </div>
   );
 }

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 "use client";
-import { useMemo, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { api, categorizer } from "@/lib/api";
+import { fallbackCategory } from "@/lib/categorize";
+import { type ModelAnswer, modelCategory } from "@/lib/categorizer";
 import { randomId } from "@/lib/ids";
 import {
   DATE_FORMATS, type ImportProfile, type SavedProfile, type StatementFormat, type StatementResult, columnValues, decodeText,
@@ -85,15 +87,10 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
   const deduped = useMemo(() => (result ? dropRepeatedBankIds(result.lines) : null), [result]);
 
   // Android falls back to the first category (Housing on a server-created household, which
-  // has no "both" category). The web picks the catch-all of the right kind instead.
-  const fallback = (kind: "expense" | "income", names: string[]) => {
-    const live = config.categories.filter((c) => !c.archived);
-    return live.find((c) => c.applies_to === "both")
-      ?? live.find((c) => c.applies_to === kind && names.includes(c.name.trim().toLowerCase()))
-      ?? live.find((c) => c.applies_to === kind) ?? live[0];
-  };
-  const uncategorizedExpense = fallback("expense", ["other", "uncategorized"]);
-  const uncategorizedIncome = fallback("income", ["other income", "other", "uncategorized"]);
+  // has no "both" category). The web ends with Other and Other income: what no rule, known
+  // merchant or categorizer recognised (categorize.ts).
+  const uncategorizedExpense = fallbackCategory(config.categories, "expense");
+  const uncategorizedIncome = fallbackCategory(config.categories, "income");
   const uncategorized = uncategorizedExpense && uncategorizedIncome;
   const proposals = useMemo(() => {
     if (!deduped || !account || !uncategorized) return [];
@@ -105,9 +102,43 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
       defaultSplit: members.length >= 2 ? { mode: "equal", members: members.map((m) => m.id) } : null,
       existingIds: new Set(rows.map((r) => r.tx.id)), now: new Date().toISOString(),
       names: { categories: config.categories, members: config.members, accounts: config.accounts },
+      knownMerchants: true,
     });
   }, [deduped, account, config, rows, uncategorized, uncategorizedExpense, uncategorizedIncome]);
   const fresh = proposals.filter((p) => !p.alreadyImported);
+
+  // Step 3: what nothing else recognised goes to the categorizer, when the server has one.
+  const [modelOn, setModelOn] = useState<boolean | null>(null);
+  const [answers, setAnswers] = useState<Record<string, ModelAnswer>>({});
+  const [asking, setAsking] = useState(0);
+  const asked = useRef(new Set<string>());
+  useEffect(() => {
+    let live = true;
+    void categorizer.enabled().then((on) => live && setModelOn(on));
+    return () => { live = false; };
+  }, []);
+  const unknown = useMemo(
+    () => fresh.filter((p) => p.source === "fallback" && isCategorised(p.transaction.kind) && !asked.current.has(p.transaction.id)),
+    [fresh],
+  );
+  useEffect(() => {
+    if (!modelOn || unknown.length === 0) return;
+    const items = unknown.slice(0, 200).map((p) => ({
+      id: p.transaction.id, date: p.transaction.date, description: p.line.description, amount_minor: p.transaction.amount_minor,
+      minor_units: currency.minorUnits, institution: accounts.find((a) => a.id === p.transaction.account_id)?.name ?? null,
+    }));
+    for (const i of items) asked.current.add(i.id);
+    setAsking((n) => n + items.length);
+    void categorizer.ask(items).then((got) => {
+      setAnswers((a) => ({ ...a, ...got }));
+      setAsking((n) => Math.max(0, n - items.length));
+    });
+  }, [modelOn, unknown, currency.minorUnits, accounts]);
+  const modelGuess = (t: Transaction) => {
+    const a = answers[t.id];
+    const c = a ? modelCategory(config.categories, a, t.kind) : null;
+    return c && a ? { category: c, fixed: !!c.fixed || (t.kind === "expense" && a.spending === "fixed") } : null;
+  };
   const createdCategories = useMemo(() => newCategories(proposals), [proposals]);
   const createdAccounts = useMemo(() => newAccounts(proposals), [proposals]);
   const brandNew = createdCategories.filter((c) => !config.categories.some((k) => k.id === c.id));
@@ -134,7 +165,16 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
     setBusy(true);
     setError(null);
     try {
-      const txs = fresh.map((p) => (overrides[p.transaction.id] ? { ...p.transaction, category_id: overrides[p.transaction.id] } : p.transaction));
+      const txs = fresh.map((p) => {
+        const t = p.transaction;
+        const chosen = overrides[t.id];
+        if (chosen) {
+          const c = config.categories.find((k) => k.id === chosen);
+          return { ...t, category_id: chosen, recurrence: c?.fixed ? ("fixed" as const) : t.recurrence };
+        }
+        const guess = p.source === "fallback" ? modelGuess(t) : null;
+        return guess ? { ...t, category_id: guess.category.id, recurrence: guess.fixed ? ("fixed" as const) : t.recurrence } : t;
+      });
       const used = new Set(txs.map((t) => t.category_id).filter(Boolean));
       const accountsUsed = new Set(txs.flatMap((t) => [t.account_id, t.to_account_id]).filter(Boolean));
       const n = await onImport(txs, createdAccounts.filter((a) => accountsUsed.has(a.id)), createdCategories.filter((c) => used.has(c.id)));
@@ -243,6 +283,17 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
           <Section>
             <span data-testid="lines-found">{proposals.length} lines, {fresh.length} new</span>
           </Section>
+          {(() => {
+            const by = (src: string) => fresh.filter((p) => p.source === src).length;
+            const modelled = fresh.filter((p) => p.source === "fallback" && !overrides[p.transaction.id] && modelGuess(p.transaction)).length;
+            const parts = [
+              by("rule") && `${by("rule")} by your rules`,
+              by("merchant") && `${by("merchant")} known shops`,
+              modelled && `${modelled} by the categorizer`,
+              by("fallback") - modelled > 0 && `${by("fallback") - modelled} to Other`,
+            ].filter(Boolean);
+            return parts.length > 0 ? <p className="t-secondary text-ink-muted px-5" data-testid="sorted-summary">Sorted: {parts.join(" · ")}{asking > 0 ? " · asking the categorizer…" : ""}</p> : null;
+          })()}
           {createdAccounts.length > 0 && <p className="t-secondary text-ink-muted px-5">New accounts: {createdAccounts.map((a) => a.name).join(", ")}</p>}
           {brandNew.length > 0 && <p className="t-secondary text-ink-muted px-5">New categories: {brandNew.map((c) => c.name).join(", ")}</p>}
           {result && result.skipped.length > 0 && <p className="t-secondary text-warning px-5">{result.skipped.length} {result.skipped.length === 1 ? "line" : "lines"} skipped (no date or amount)</p>}
@@ -255,7 +306,8 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
           <div className="mt-2">
             {proposals.slice(0, 200).map((p) => {
               const t = p.transaction;
-              const cat = overrides[t.id] ?? t.category_id;
+              const guess = p.source === "fallback" && !p.alreadyImported ? modelGuess(t) : null;
+              const cat = overrides[t.id] ?? guess?.category.id ?? t.category_id;
               return (
                 <div key={t.id} className="flex items-center gap-3 px-5 py-3 border-b border-line" data-testid="preview-row">
                   <div className="flex-1 min-w-0">
@@ -277,7 +329,11 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
                       ) : (
                         <span>· transfer</span>
                       )}
-                      {p.matchedRule && <span>· by rule “{p.matchedRule.pattern}”</span>}
+                      {!overrides[t.id] && !p.alreadyImported && (
+                        p.source === "rule" && p.matchedRule ? <span data-testid="by-rule">· by rule “{p.matchedRule.pattern}”</span>
+                          : p.source === "merchant" ? <span data-testid="by-merchant">· known shop</span>
+                            : guess ? <span data-testid="by-model">· by categorizer</span> : null
+                      )}
                     </div>
                   </div>
                   <div className={`t-amount ${p.line.amountMinor > 0 ? "text-money-in" : "text-ink"}`}>{formatMoney(p.line.amountMinor, currency.code, locale, true)}</div>

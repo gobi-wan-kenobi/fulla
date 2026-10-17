@@ -132,3 +132,38 @@ export function problem(t: Transaction): string | null {
   if (t.kind === "transfer" && t.account_id === t.to_account_id) return "Choose two different accounts";
   return null;
 }
+
+export interface SpendingSplit {
+  fixedMinor: number;
+  flexibleMinor: number;
+}
+
+/** A month's spending (expenses less refunds) split into fixed and flexible by each row's own recurrence. */
+export function monthSpendingSplit(rows: LocalRow[], month: string): SpendingSplit {
+  let fixed = 0;
+  let flexible = 0;
+  for (const t of counted(rows)) {
+    if (monthOf(t.date) !== month) continue;
+    const sign = t.kind === "expense" ? 1 : t.kind === "refund" ? -1 : 0;
+    if (!sign) continue;
+    if (t.recurrence === "fixed") fixed += sign * t.amount_minor;
+    else flexible += sign * t.amount_minor;
+  }
+  return { fixedMinor: fixed, flexibleMinor: flexible };
+}
+
+/**
+ * A row moved to another category: the category, and the category's fixed or
+ * flexible default. Null when that category cannot hold this kind (a
+ * transfer, or income into a spending category).
+ */
+export function recategorized(t: Transaction, category: Category): Transaction | null {
+  if (!countsInTotals(t.kind) || category.archived || !allows(category.applies_to, t.kind)) return null;
+  return { ...t, category_id: category.id, recurrence: category.fixed ? "fixed" : "variable" };
+}
+
+/** A row marked fixed or flexible; transfers have neither. */
+export function withRecurrence(t: Transaction, fixed: boolean): Transaction | null {
+  if (!countsInTotals(t.kind)) return null;
+  return { ...t, recurrence: fixed ? "fixed" : "variable" };
+}

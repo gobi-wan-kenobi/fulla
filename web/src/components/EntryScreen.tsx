@@ -2,12 +2,16 @@
 "use client";
 import { Check, ChevronDown, ChevronUp, Delete, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { api } from "@/lib/api";
+import { cleanMerchant, suggest, type Suggestion } from "@/lib/categorize";
+import { canManage, newRule } from "@/lib/rules";
 import { categoriesFor, newTransaction, problem, today, withKind } from "@/lib/ledger";
-import { activeMembers, type Config, type Transaction, type TransactionKind } from "@/lib/model";
+import { activeMembers, type Category, type Config, type Transaction, type TransactionKind } from "@/lib/model";
 import { currencyOf, formatMoney, parseTyped } from "@/lib/money";
 import type { LocalRow } from "@/lib/sync";
 import { Icon } from "./Icon";
 import { Chip, ScreenHeader, SecondaryButton, categoryColor, inputClass } from "./Pieces";
+
 
 const KINDS: { key: TransactionKind; label: string }[] = [
   { key: "expense", label: "Expense" },
@@ -26,12 +30,13 @@ function typedFrom(minor: number, units: number): string {
  * Add and edit, laid out as the Android entry screen: kinds, the amount,
  * category tiles, one line of details, and the keypad with Save on it.
  */
-export function EntryScreen({ config, existing, onSave, onDelete, onClose }: {
+export function EntryScreen({ config, existing, onSave, onDelete, onClose, onConfig }: {
   config: Config;
   existing?: LocalRow;
   onSave: (tx: Transaction) => Promise<void>;
   onDelete?: () => Promise<void>;
   onClose?: () => void;
+  onConfig?: (c: Config) => void;
 }) {
   const currency = currencyOf(config.household.currency) ?? { code: config.household.currency, minorUnits: 2 };
   const [tx, setTx] = useState<Transaction>(() => existing?.tx ?? newTransaction(config, "expense", today()));
@@ -41,6 +46,11 @@ export function EntryScreen({ config, existing, onSave, onDelete, onClose }: {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A category someone tapped is theirs; until then the note may suggest one (rules, then known shops).
+  const [picked, setPicked] = useState(!!existing);
+  const [suggested, setSuggested] = useState<Suggestion | null>(null);
+  const [remember, setRemember] = useState(false);
+  const [rulePattern, setRulePattern] = useState(() => cleanMerchant(existing?.tx.note ?? ""));
 
   const amount = parseTyped(typed || "0", currency, "dot") ?? 0;
   const current = { ...tx, amount_minor: amount };
@@ -64,12 +74,40 @@ export function EntryScreen({ config, existing, onSave, onDelete, onClose }: {
     });
   }
 
+  const recategorizing = !!existing && !!tx.category_id && tx.category_id !== existing.tx.category_id && tx.note.trim().length > 0;
+  const canRemember = recategorizing && !!onConfig && canManage(config);
+  const chosenCategory = config.categories.find((c) => c.id === tx.category_id);
+
+  function choose(c: Category) {
+    setPicked(true);
+    setSuggested(null);
+    setTx({ ...tx, category_id: c.id, recurrence: c.fixed ? "fixed" : tx.category_id === c.id ? tx.recurrence : "variable" });
+  }
+
+  function typeNote(note: string) {
+    const next = { ...tx, note };
+    if (!picked && tx.kind !== "transfer") {
+      const s = suggest(note, tx.kind, config.categorization_rules ?? [], config.categories);
+      setSuggested(s);
+      if (s) {
+        next.category_id = s.category.id;
+        next.recurrence = s.fixed ? "fixed" : "variable";
+      }
+    }
+    setTx(next);
+  }
+
   async function save() {
     if (why) return;
     setSaving(true);
     try {
+      if (canRemember && remember && rulePattern.trim().length >= 2 && onConfig) {
+        onConfig(await api.ruleUpsert(config.household.id, newRule(config, rulePattern, tx.category_id)));
+      }
       await onSave(current);
       if (!existing) {
+        setPicked(false);
+        setSuggested(null);
         setSaved(true);
         setTimeout(() => setSaved(false), 900);
         setTx(newTransaction(config, tx.kind, tx.date));
@@ -123,7 +161,7 @@ export function EntryScreen({ config, existing, onSave, onDelete, onClose }: {
               key={c.id}
               type="button"
               data-testid={`category-${c.name}`}
-              onClick={() => setTx({ ...tx, category_id: c.id })}
+              onClick={() => choose(c)}
               className={`yields flex flex-col items-center justify-center gap-1.5 h-[84px] rounded-2xl px-1 ${
                 tx.category_id === c.id ? "bg-highlight text-on-highlight" : "bg-paper-high text-ink"
               }`}
@@ -179,12 +217,31 @@ export function EntryScreen({ config, existing, onSave, onDelete, onClose }: {
           )}
           <label className="block">
             <span className="t-label text-ink-muted">Note</span>
-            <input data-testid="note" className={inputClass} maxLength={500} value={tx.note} onChange={(e) => setTx({ ...tx, note: e.target.value })} placeholder="Where, what" />
+            <input data-testid="note" className={inputClass} maxLength={500} value={tx.note} onChange={(e) => typeNote(e.target.value)} placeholder="Where, what" />
           </label>
+          {suggested && !picked && (
+            <p className="t-secondary text-ink-muted -mt-2" data-testid="suggested">
+              {suggested.category.name}, {suggested.source === "rule" ? `by your rule “${suggested.rule?.pattern}”` : "a shop Fulla knows"}
+            </p>
+          )}
+          {canRemember && (
+            <div className="rounded-2xl bg-paper-high p-3 grid gap-2">
+              <label className="flex items-center gap-3 t-body">
+                <input type="checkbox" data-testid="remember-rule" className="w-5 h-5 accent-current" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+                <span>Always put this in {chosenCategory?.name}</span>
+              </label>
+              {remember && (
+                <label className="block">
+                  <span className="t-label text-ink-muted">When the note contains</span>
+                  <input data-testid="remember-pattern" className={inputClass} maxLength={100} value={rulePattern} onChange={(e) => setRulePattern(e.target.value)} />
+                </label>
+              )}
+            </div>
+          )}
           {tx.kind !== "transfer" && (
             <div className="flex gap-2">
-              <Chip label="Everyday" selected={tx.recurrence === "variable"} onClick={() => setTx({ ...tx, recurrence: "variable" })} />
-              <Chip label="Fixed" selected={tx.recurrence === "fixed"} onClick={() => setTx({ ...tx, recurrence: "fixed" })} />
+              <Chip label="Flexible" selected={tx.recurrence === "variable"} onClick={() => setTx({ ...tx, recurrence: "variable" })} testId="recurrence-flexible" />
+              <Chip label="Fixed" selected={tx.recurrence === "fixed"} onClick={() => setTx({ ...tx, recurrence: "fixed" })} testId="recurrence-fixed" />
             </div>
           )}
           {existing?.state === "rejected" && <p className="t-secondary text-danger">The server refused this: {existing.error}</p>}

@@ -5,25 +5,21 @@
 import { DEFAULT_CATEGORIES } from "../defaults";
 import { importedId, sha256Hex, uuid5 } from "../ids";
 import type { Account, AppliesTo, CategorizationRule, Category, Member, Split, Transaction, TransactionKind } from "../model";
+import { type CategorySource, incomingKind, knownMerchant, matchRule, merchantCategory, type MerchantMatch } from "../categorize";
 import { normalizeName } from "../text";
 import { defaultKeys, iconFor, synonymsOf } from "./hints";
 import type { StatementLine } from "./types";
 
-/** "When a note contains pattern, then …". The first active rule by sort wins. */
-export function matchRule(rules: CategorizationRule[], description: string): CategorizationRule | null {
-  const text = normalizeName(description);
-  return (
-    [...rules]
-      .filter((r) => r.active)
-      .sort((a, b) => a.sort - b.sort || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-      .find((r) => text.includes(normalizeName(r.pattern))) ?? null
-  );
-}
+export { matchRule } from "../categorize";
 
 export interface ProposedTransaction {
   transaction: Transaction;
   line: StatementLine;
   matchedRule: CategorizationRule | null;
+  /** Where the category came from (web only): a rule, the file, a known merchant, or the catch-all. */
+  source: CategorySource | null;
+  /** The known merchant that set the category, when one did. */
+  matchedMerchant: MerchantMatch | null;
   /** The household already holds a row with this id: importing again changes nothing. */
   alreadyImported: boolean;
   /** A category this line needs written first: new, or existing and widened to both kinds. */
@@ -62,6 +58,8 @@ export interface ProposeInput {
   existingIds: Set<string>;
   now: string;
   names?: ImportNames;
+  /** Web only: after the rules and the file, try the built-in known merchants (merchants.ts). */
+  knownMerchants?: boolean;
 }
 
 function sameCategory(a: Category, b: Category): boolean {
@@ -117,7 +115,10 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
   };
   const accountsInFile = new Set(lines.map((l) => (l.account ? normalizeName(l.account) : "")).filter((s) => s.length > 0));
 
-  interface Read { line: StatementLine; account: string; rule: CategorizationRule | null; pocket: Account | null; name: string | null }
+  interface Read {
+    line: StatementLine; account: string; rule: CategorizationRule | null; pocket: Account | null; name: string | null;
+    merchant: MerchantMatch | null;
+  }
   const read: Read[] = lines.map((line) => {
     const named = line.account?.trim();
     const lineAccount = named ? accountFor(named).id : accountId;
@@ -129,7 +130,8 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
       if (pocket && pocket.id === lineAccount) pocket = null;
     }
     const name = line.bankCategory && !rule?.action.category_id && !pocket ? line.bankCategory.trim() || null : null;
-    return { line, account: lineAccount, rule, pocket, name };
+    const merchant = input.knownMerchants && !rule?.action.category_id && !rule?.action.kind && !pocket && !name ? knownMerchant(line.description) : null;
+    return { line, account: lineAccount, rule, pocket, name, merchant };
   });
 
   const kindOf = (r: Read): TransactionKind => {
@@ -137,6 +139,7 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
     if (r.pocket) return "transfer";
     if (r.line.amountMinor < 0) return "expense";
     if (r.rule?.action.category_id && categories.find((c) => c.id === r.rule!.action.category_id)?.applies_to === "expense") return "refund";
+    if (r.merchant && incomingKind(r.line.description) === "refund" && merchantCategory(categories, r.merchant, "refund")) return "refund";
     return "income";
   };
   const kinds = read.map(kindOf);
@@ -190,10 +193,16 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
     const category = r.name && kind !== "transfer" ? categoryFor(r.name) : null;
     const toWrite = category && !categories.some((c) => sameCategory(c, category)) ? category : null;
     const payer = (line.payer ? members.get(normalizeName(line.payer))?.id : undefined) ?? input.payerMemberId;
+    const ruled = r.rule?.action.category_id ?? null;
+    const known = !ruled && !category && r.merchant && kind !== "transfer" ? merchantCategory(categories, r.merchant, kind) : null;
+    const chosen = ruled ?? category?.id ?? known?.id ?? null;
+    const source: CategorySource | null = kind === "transfer" ? null : ruled ? "rule" : category ? "file" : known ? "merchant" : "fallback";
+    const chosenCategory = chosen ? (categories.find((c) => c.id === chosen) ?? category) : null;
+    const fixedByDefault = line.fixed == null && kind !== "transfer" && (!!chosenCategory?.fixed || (!!known && !!r.merchant?.merchant.fixed));
     const base: Transaction = {
       id, kind, date: line.date, amount_minor: amount, category_id: null, account_id: null, to_account_id: null,
       paid_by_member_id: null, to_member_id: null, split: null,
-      recurrence: line.fixed === true && kind !== "transfer" ? "fixed" : "variable",
+      recurrence: (line.fixed === true || fixedByDefault) && kind !== "transfer" ? "fixed" : "variable",
       note: line.description.slice(0, 500), tags: r.rule?.action.tags ?? [], extras: {}, status: "active",
       recurring_rule_id: null, occurrence_date: null, import_fingerprint: fp, original_currency: null,
       trip_id: null, created_at: input.now, client_updated_at: input.now,
@@ -204,17 +213,17 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
       else if (line.amountMinor < 0) tx = { ...base, account_id: r.account, to_account_id: r.pocket.id };
       else tx = { ...base, account_id: r.pocket.id, to_account_id: r.account };
     } else if (kind === "income") {
-      tx = { ...base, account_id: r.account, category_id: r.rule?.action.category_id ?? category?.id ?? input.uncategorizedIncomeId };
+      tx = { ...base, account_id: r.account, category_id: chosen ?? input.uncategorizedIncomeId };
     } else {
       tx = {
         ...base, account_id: r.account,
-        category_id: r.rule?.action.category_id ?? category?.id ?? input.uncategorizedExpenseId,
+        category_id: chosen ?? input.uncategorizedExpenseId,
         paid_by_member_id: payer, split: input.defaultSplit,
       };
     }
     const used = new Set([tx.account_id, tx.to_account_id].filter(Boolean));
     return {
-      transaction: tx, line, matchedRule: r.rule, alreadyImported: input.existingIds.has(id), newCategory: toWrite,
+      transaction: tx, line, matchedRule: r.rule, source, matchedMerchant: source === "merchant" ? r.merchant : null, alreadyImported: input.existingIds.has(id), newCategory: toWrite,
       newAccounts: [...newAccounts.values()].filter((a) => used.has(a.id)),
     };
   });

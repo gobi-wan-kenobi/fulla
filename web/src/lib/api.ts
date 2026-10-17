@@ -5,6 +5,7 @@
  * database's JSON. Nothing reads or writes a table directly; PostgREST only
  * exposes the public.fulla_* functions.
  */
+import type { ModelAnswer, ModelItem } from "./categorizer";
 import type { Account, CategorizationRule, Category, Config, SavedImportProfile } from "./model";
 import type { Mutation, PullPage, PushResult } from "./sync";
 import { supabase } from "./supabase";
@@ -76,6 +77,45 @@ export const api = {
 
   pull: (householdId: string, since: number, configVersion: number, limit = 500) =>
     call<PullPage>("fulla_sync_pull", { p_household_id: householdId, p_since: since, p_config_version: configVersion, p_limit: limit }),
+};
+
+/**
+ * The optional model step (app/api/categorize): answers for the lines it could
+ * read, nothing at all when it is off or failing. Never throws.
+ */
+export const categorizer = {
+  enabled: async (): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/categorize", { cache: "no-store" });
+      return res.ok && ((await res.json()) as { enabled?: boolean }).enabled === true;
+    } catch {
+      return false;
+    }
+  },
+  ask: async (items: ModelItem[]): Promise<Record<string, ModelAnswer>> => {
+    if (items.length === 0) return {};
+    try {
+      const { data } = await supabase().auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return {};
+      const out: Record<string, ModelAnswer> = {};
+      for (let i = 0; i < items.length; i += 40) {
+        const res = await fetch("/api/categorize", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ items: items.slice(i, i + 40) }),
+        });
+        if (!res.ok) break;
+        const body = (await res.json()) as { results?: Record<string, ModelAnswer>; stopped?: string | null };
+        Object.assign(out, body.results ?? {});
+        if (body.stopped === "quota" || body.stopped === "off") break;
+      }
+      return out;
+    } catch (e) {
+      console.warn("categorizer unavailable", e instanceof Error ? e.message : e);
+      return {};
+    }
+  },
 };
 
 const INVITE_PROBLEMS: Record<string, string> = {

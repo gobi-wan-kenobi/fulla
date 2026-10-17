@@ -24,6 +24,19 @@ Next.js (App Router) · TypeScript · Tailwind · `@supabase/supabase-js` / `@su
   gets the same id, so a file imported again adds nothing; a transaction id
   (FITID) repeated inside one OFX/QFX file is kept once. UTF-8, and
   Windows-1252 / ISO-8859-1 files, are read correctly.
+- Categorisation of imported and typed transactions, in this order: the
+  household's rules ("note contains … → category"), then a built-in list of
+  common Canadian merchants (`src/lib/merchants.ts`, statement strings cleaned
+  of store numbers, `*`, processor prefixes and "CITY ON"), then the optional
+  categorizer model, then Other / Other income. Rules can be added, edited,
+  paused and deleted in Settings → Categories, created from a transaction when
+  its category is changed, and applied to what is still in Uncategorized or
+  Other.
+- Bulk changes in History: select transactions, move them to a category, or
+  mark them fixed or flexible.
+- Fixed and flexible spending: a category can be fixed (its transactions start
+  fixed), each transaction can still differ, and History shows the month's
+  fixed and flexible totals.
 - Settings: members, invite codes, accounts, sign out.
 - Installable: a web manifest, icons, and a service worker that caches the app
   shell (never Supabase requests).
@@ -84,6 +97,19 @@ npm run build
    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the project's anon key or publishable key (`sb_publishable_…`) |
 
    `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` is read too, if you prefer that name.
+
+   Optional, server-side only (never `NEXT_PUBLIC_`): the categorizer model.
+
+   | Name | Value |
+   | --- | --- |
+   | `OPENAI_API_KEY` | an OpenAI API key; without it the model step is off |
+   | `FULLA_CATEGORIZER_MODEL` | the chat model to ask (default: Fulla's fine-tuned transaction model id in `src/lib/categorizer.ts`) |
+
+   With a key set, the lines no rule or known merchant recognised are sent,
+   one per request at temperature 0.1, from `/api/categorize` (signed-in
+   people only) to that model: the date, the statement text, the amount and
+   the account's name, nothing else. Any failure (no credit, a rate limit, a
+   timeout) leaves those lines in Other, as if the key were not set.
    Both values are public by design: what a signed-in person can do is decided by
    row-level security and the `fulla_*` functions, not by the key. Never put the
    service-role (secret) key in the web app.

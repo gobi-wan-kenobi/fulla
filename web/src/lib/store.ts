@@ -51,6 +51,8 @@ export interface Household {
   sync: () => Promise<void>;
   saveTransaction: (tx: Transaction, existing?: LocalRow) => Promise<void>;
   deleteTransaction: (row: LocalRow) => Promise<void>;
+  /** Several edits at once (bulk recategorize), then one sync. */
+  saveTransactions: (changes: { tx: Transaction; existing: LocalRow }[]) => Promise<number>;
   importTransactions: (txs: Transaction[], accounts: Account[], categories: Category[]) => Promise<number>;
   setConfig: (c: Config) => void;
 }
@@ -175,6 +177,20 @@ export function useHousehold(householdId: string): Household {
     [commit, sync],
   );
 
+  const saveTransactions = useCallback(
+    async (changes: { tx: Transaction; existing: LocalRow }[]) => {
+      const now = new Date();
+      for (const { tx, existing } of changes) {
+        const current = state.current.rows[existing.tx.id] ?? existing;
+        state.current.rows[existing.tx.id] = editRow(current, tx, now);
+      }
+      commit();
+      await sync();
+      return changes.length;
+    },
+    [commit, sync],
+  );
+
   const importTransactions = useCallback(
     async (txs: Transaction[], accounts: Account[], categories: Category[]) => {
       // Accounts and categories first: a row must never reach the server before what it names.
@@ -203,5 +219,5 @@ export function useHousehold(householdId: string): Household {
     [commit],
   );
 
-  return { config: state.current.config, rows: Object.values(state.current.rows), syncing, error, sync, saveTransaction, deleteTransaction, importTransactions, setConfig };
+  return { config: state.current.config, rows: Object.values(state.current.rows), syncing, error, sync, saveTransaction, deleteTransaction, saveTransactions, importTransactions, setConfig };
 }

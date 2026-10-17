@@ -85,6 +85,8 @@ export interface Category {
   color_index: number;
   sort: number;
   archived: boolean;
+  /** Spending here is usually the same every period (0023); the default a transaction's recurrence gets. */
+  fixed?: boolean;
 }
 
 export interface CategorizationRule {
@@ -93,6 +95,8 @@ export interface CategorizationRule {
   action: { category_id?: string | null; kind?: TransactionKind | null; to_account_id?: string | null; tags?: string[] };
   sort: number;
   active: boolean;
+  /** Deleted (0023): kept, never matches, not shown. */
+  archived?: boolean;
 }
 
 export interface SavedImportProfile {

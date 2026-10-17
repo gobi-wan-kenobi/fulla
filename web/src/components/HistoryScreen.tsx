@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 "use client";
-import { ChevronLeft, ChevronRight, CloudOff, RefreshCw, Search } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CloudOff, ListChecks, RefreshCw, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { byDay, monthOf, monthTotals, shiftMonth, signedAmount, today } from "@/lib/ledger";
-import type { Config } from "@/lib/model";
+import { byDay, categoriesFor, monthOf, monthSpendingSplit, monthTotals, recategorized, shiftMonth, signedAmount, today, withRecurrence } from "@/lib/ledger";
+import { countsInTotals, type Config, type Transaction } from "@/lib/model";
 import { formatMoney } from "@/lib/money";
 import type { LocalRow } from "@/lib/sync";
 import { normalizeName } from "@/lib/text";
@@ -22,14 +22,20 @@ function monthLabel(month: string, locale: string): string {
 }
 
 /** The month's rows by day, as the Android History: search, filter chips, a row per transaction. */
-export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh }: {
+export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh, onBulk }: {
   config: Config;
   rows: LocalRow[];
   syncing: boolean;
   error: string | null;
   onOpen: (row: LocalRow) => void;
   onRefresh: () => void;
+  onBulk?: (changes: { tx: Transaction; existing: LocalRow }[]) => Promise<number>;
 }) {
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkNote, setBulkNote] = useState<string | null>(null);
   const locale = config.household.locale || "en-CA";
   const currency = config.household.currency;
   const [month, setMonth] = useState(monthOf(today()));
@@ -52,6 +58,36 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh 
   }, [rows, filter, query]); // eslint-disable-line react-hooks/exhaustive-deps
   const days = useMemo(() => byDay(filtered, month), [filtered, month]);
   const totals = useMemo(() => monthTotals(rows, month), [rows, month]);
+  const split = useMemo(() => monthSpendingSplit(rows, month), [rows, month]);
+  const chosenRows = rows.filter((r) => selected.has(r.tx.id));
+  const bulkKinds = new Set(chosenRows.map((r) => r.tx.kind));
+  const bulkChoices = config.categories
+    .filter((c) => !c.archived && [...bulkKinds].every((k) => categoriesFor(config, k).some((x) => x.id === c.id)))
+    .sort((a, b) => a.sort - b.sort);
+  const toggle = (id: string) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
+  };
+  const stopSelecting = () => {
+    setSelecting(false);
+    setSelected(new Set());
+    setBulkCategory("");
+  };
+
+  async function bulk(make: (t: Transaction) => Transaction | null, what: (n: string) => string) {
+    if (!onBulk) return;
+    setBulkBusy(true);
+    try {
+      const changes = chosenRows.map((r) => ({ tx: make(r.tx), existing: r })).filter((c): c is { tx: Transaction; existing: LocalRow } => !!c.tx);
+      const n = await onBulk(changes);
+      setBulkNote(what(`${n} transaction${n === 1 ? "" : "s"}`));
+      stopSelecting();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
   const pending = rows.filter((r) => r.state === "pending").length;
 
   return (
@@ -59,9 +95,16 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh 
       <ScreenHeader
         title="History"
         end={
-          <button type="button" onClick={onRefresh} aria-label="Sync now" className="yields p-2 -mr-2 text-ink-muted" data-testid="sync">
-            {error ? <CloudOff size={22} className="text-warning" /> : <RefreshCw size={22} className={syncing ? "animate-spin" : ""} />}
-          </button>
+          <div className="flex items-center gap-1 -mr-2">
+            {onBulk && (
+              <button type="button" onClick={() => (selecting ? stopSelecting() : setSelecting(true))} aria-label={selecting ? "Stop selecting" : "Select"} className="yields p-2 text-ink-muted" data-testid="select-mode">
+                {selecting ? <X size={22} /> : <ListChecks size={22} />}
+              </button>
+            )}
+            <button type="button" onClick={onRefresh} aria-label="Sync now" className="yields p-2 text-ink-muted" data-testid="sync">
+              {error ? <CloudOff size={22} className="text-warning" /> : <RefreshCw size={22} className={syncing ? "animate-spin" : ""} />}
+            </button>
+          </div>
         }
       />
       <div className="px-5">
@@ -82,9 +125,13 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh 
           <div className="t-secondary text-ink-muted" data-testid="month-totals">
             Spent {formatMoney(totals.spentMinor, currency, locale)} · In {formatMoney(totals.incomeMinor, currency, locale)}
           </div>
+          <div className="t-label text-ink-muted" data-testid="month-split">
+            Fixed {formatMoney(split.fixedMinor, currency, locale)} · Flexible {formatMoney(split.flexibleMinor, currency, locale)}
+          </div>
         </div>
         <button type="button" aria-label="Next month" className="yields p-2" onClick={() => setMonth(shiftMonth(month, 1))}><ChevronRight size={22} /></button>
       </div>
+      {bulkNote && !selecting && <p className="t-label text-ink-muted px-5 pt-2" data-testid="bulk-done">{bulkNote}</p>}
       {(error || pending > 0) && (
         <p className="t-label text-warning px-5 pt-2">{error ? `Not synced: ${error}` : `${pending} waiting to sync`}</p>
       )}
@@ -109,14 +156,20 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh 
                   key={t.id}
                   type="button"
                   data-testid="history-row"
-                  onClick={() => onOpen(r)}
-                  className="w-full flex items-center gap-4 px-5 py-3 border-b border-line text-left yields"
+                  onClick={() => (selecting ? countsInTotals(t.kind) && toggle(t.id) : onOpen(r))}
+                  aria-pressed={selecting ? selected.has(t.id) : undefined}
+                  className={`w-full flex items-center gap-4 px-5 py-3 border-b border-line text-left yields ${selecting && !countsInTotals(t.kind) ? "opacity-40" : ""}`}
                 >
-                  {who ? <Avatar initials={who.initials} colorIndex={who.color_index} /> : <div className="w-10" />}
+                  {selecting ? (
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 shrink-0 ${selected.has(t.id) ? "bg-highlight border-highlight text-on-highlight" : "border-line"}`}>
+                      {selected.has(t.id) && <Check size={20} strokeWidth={2.5} />}
+                    </div>
+                  ) : who ? <Avatar initials={who.initials} colorIndex={who.color_index} /> : <div className="w-10" />}
                   <div className="flex-1 min-w-0">
                     <div className="t-body truncate">{title}</div>
                     <div className="t-secondary text-ink-muted truncate">
                       {context}
+                      {t.recurrence === "fixed" && countsInTotals(t.kind) && " · fixed"}
                       {r.state === "pending" && " · waiting to sync"}
                       {r.state === "rejected" && <span className="text-danger"> · refused</span>}
                     </div>
@@ -130,6 +183,36 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh 
           </section>
         ))
       )}
+      {selecting && (
+        <div className="fixed inset-x-0 bottom-[76px] z-10" data-testid="bulk-bar">
+          <div className="max-w-md mx-auto px-3">
+            <div className="rounded-2xl bg-paper-high border border-line p-3 grid gap-2 shadow-lg">
+              <div className="flex items-center justify-between t-secondary">
+                <span data-testid="bulk-count">{selected.size} selected</span>
+                <button type="button" className="underline text-ink" onClick={() => setSelected(new Set(days.flatMap((d) => d.rows).filter((r) => countsInTotals(r.tx.kind)).map((r) => r.tx.id)))}>
+                  Select all this month
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <select data-testid="bulk-category" className="flex-1 h-11 px-3 rounded-xl border border-line bg-paper text-ink t-body" value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)} disabled={selected.size === 0}>
+                  <option value="">Move to category…</option>
+                  {bulkChoices.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <button type="button" data-testid="bulk-apply" disabled={!bulkCategory || selected.size === 0 || bulkBusy}
+                  onClick={() => { const c = config.categories.find((k) => k.id === bulkCategory); if (c) void bulk((t) => recategorized(t, c), (n) => `Moved ${n} to ${c.name}.`); }}
+                  className="yields h-11 px-4 rounded-xl bg-accent text-on-accent t-body font-semibold disabled:opacity-40">
+                  {bulkBusy ? "…" : "Move"}
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" data-testid="bulk-fixed" disabled={selected.size === 0 || bulkBusy} onClick={() => void bulk((t) => withRecurrence(t, true), (n) => `Marked ${n} fixed.`)} className="yields flex-1 h-10 rounded-xl border border-line t-secondary disabled:opacity-40">Mark fixed</button>
+                <button type="button" data-testid="bulk-flexible" disabled={selected.size === 0 || bulkBusy} onClick={() => void bulk((t) => withRecurrence(t, false), (n) => `Marked ${n} flexible.`)} className="yields flex-1 h-10 rounded-xl border border-line t-secondary disabled:opacity-40">Mark flexible</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {selecting && <div className="h-44" />}
     </div>
   );
 }
