@@ -11,7 +11,8 @@
  * taxonomy to Fulla's starting categories.
  */
 import { categoryForKey, isCatchAll } from "./categorize";
-import { allows, type Category, type TransactionKind } from "./model";
+import { allows, type Account, type Category, type TransactionKind } from "./model";
+import { CREDIT_CARD, LOAN, OTHER_ACCOUNT, isConsumerLender, isPersonToPerson } from "./transfers";
 
 export const DEFAULT_CATEGORIZER_MODEL = "ft:gpt-4.1-2025-04-14:personal:transaction-processor:Bb3M10Qu";
 
@@ -175,3 +176,34 @@ export function modelCategory(categories: Category[], answer: ModelAnswer, kind:
 
 /** Every parent category the model knows, for the test that the mapping covers them all. */
 export const MODEL_PARENTS = Object.keys(PARENTS);
+
+/** The account at the other end when the model says a line is money moving between your own accounts. */
+export interface ModelTransfer {
+  counterpart: string;
+  counterpartType: Account["type"];
+  direction: "out" | "in";
+}
+
+/**
+ * When the model's answer means a transfer rather than spending: its
+ * Transfers and Savings & Investing, and a Debt Payment that is a credit card
+ * or a loan. Never for money to or from a person (an Interac e-Transfer may
+ * be spending), nor for buy-now-pay-later and consumer lenders (the
+ * household decides those), as transfers.ts. Null: map it to a category.
+ */
+export function modelTransfer(answer: ModelAnswer, description: string, kind: TransactionKind): ModelTransfer | null {
+  if (kind !== "expense" && kind !== "income") return null;
+  if (isPersonToPerson(description) || isConsumerLender(description)) return null;
+  const direction = kind === "expense" ? "out" : "in";
+  const parent = key(answer.parent);
+  const sub = key(answer.subcategory ?? "");
+  if (parent === "transfers") return { counterpart: OTHER_ACCOUNT, counterpartType: "other", direction };
+  if (parent === "savings & investing") return { counterpart: OTHER_ACCOUNT, counterpartType: "other", direction };
+  if (parent === "debt payments" && kind === "expense") {
+    if (/credit ?card/.test(sub)) return { counterpart: CREDIT_CARD, counterpartType: "credit_card", direction };
+    if (/\b(loan|loans|line of credit|student|auto|car|vehicle)\b/.test(sub) && !/mortgage/.test(sub)) {
+      return { counterpart: LOAN, counterpartType: "other", direction };
+    }
+  }
+  return null;
+}

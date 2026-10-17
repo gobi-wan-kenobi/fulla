@@ -35,7 +35,13 @@ Next.js (App Router) · TypeScript · Tailwind · `@supabase/supabase-js` / `@su
   are dated by when they happened (the statement's Date column). Tests build
   an invented statement as a PDF (`test/pdfFixture.ts`).
 - Categorisation of imported and typed transactions, in this order: the
-  household's rules ("note contains … → category"), then a built-in list of
+  household's rules ("note contains … → category"), then built-in transfer
+  patterns (`src/lib/transfers.ts`: "Transfer out to …"/"Transfer in from …"
+  between your own accounts, credit card bill payments, loan and line of
+  credit payments become transfers to an account of that name, out of the
+  spending totals and listed under Transfers; never Interac e-Transfers to
+  people, mortgages, or buy-now-pay-later and consumer lenders, which the
+  household decides), then a built-in list of
   common Canadian merchants (`src/lib/merchants.ts`, statement strings cleaned
   of store numbers, `*`, processor prefixes and "CITY ON"), then the optional
   categorizer model (off without `OPENAI_API_KEY`; `FULLA_CATEGORIZER_MODEL`

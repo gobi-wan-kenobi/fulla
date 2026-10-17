@@ -8,6 +8,8 @@ All notable changes to Fulla are recorded here. The format follows
 
 ### Added
 
+- Web: transfers between your own accounts, credit card bill payments and loan
+  payments are imported as transfers, not spending.
 - Web: import Wealthsimple chequing PDF statements, read in the browser, with
   every running balance checked.
 - Database schema for households, members, invites, accounts, categories,

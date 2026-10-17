@@ -7,6 +7,7 @@ import { importedId, sha256Hex, uuid5 } from "../ids";
 import type { Account, AppliesTo, CategorizationRule, Category, Member, Split, Transaction, TransactionKind } from "../model";
 import { type CategorySource, incomingKind, knownMerchant, matchRule, merchantCategory, type MerchantMatch } from "../categorize";
 import { normalizeName } from "../text";
+import { type KnownTransfer, knownTransfer } from "../transfers";
 import { defaultKeys, iconFor, synonymsOf } from "./hints";
 import type { StatementLine } from "./types";
 
@@ -20,6 +21,8 @@ export interface ProposedTransaction {
   source: CategorySource | null;
   /** The known merchant that set the category, when one did. */
   matchedMerchant: MerchantMatch | null;
+  /** Web only: the built-in transfer pattern that made this line a transfer (transfers.ts), when one did. */
+  matchedTransfer?: KnownTransfer | null;
   /** The household already holds a row with this id: importing again changes nothing. */
   alreadyImported: boolean;
   /** A category this line needs written first: new, or existing and widened to both kinds. */
@@ -60,6 +63,13 @@ export interface ProposeInput {
   names?: ImportNames;
   /** Web only: after the rules and the file, try the built-in known merchants (merchants.ts). */
   knownMerchants?: boolean;
+  /**
+   * Web only: after the rules and the file, before the known merchants, lines
+   * that plainly move money between the household's own accounts (a transfer
+   * between accounts, a card bill payment, a loan payment) become transfers
+   * (transfers.ts), to an account of that name, made when there is none.
+   */
+  knownTransfers?: boolean;
 }
 
 function sameCategory(a: Category, b: Category): boolean {
@@ -101,12 +111,12 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
   }
 
   const newAccounts = new Map<string, Account>();
-  const accountFor = (name: string): Account => {
+  const accountFor = (name: string, type: Account["type"] = "other"): Account => {
     const key = normalizeName(name);
     const existing = accounts.get(key) ?? newAccounts.get(key);
     if (existing) return existing;
     const made: Account = {
-      id: accountIdFor(householdId, name), name: name.trim().slice(0, 60), type: "other",
+      id: accountIdFor(householdId, name), name: name.trim().slice(0, 60), type,
       opening_balance_minor: 0, opening_balance_date: null, round_up_to: null, round_up_multiplier: null,
       sort: accounts.size + newAccounts.size, archived: false,
     };
@@ -117,7 +127,7 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
 
   interface Read {
     line: StatementLine; account: string; rule: CategorizationRule | null; pocket: Account | null; name: string | null;
-    merchant: MerchantMatch | null;
+    merchant: MerchantMatch | null; transfer: { known: KnownTransfer; counterpart: Account } | null;
   }
   const read: Read[] = lines.map((line) => {
     const named = line.account?.trim();
@@ -130,13 +140,17 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
       if (pocket && pocket.id === lineAccount) pocket = null;
     }
     const name = line.bankCategory && !rule?.action.category_id && !pocket ? line.bankCategory.trim() || null : null;
-    const merchant = input.knownMerchants && !rule?.action.category_id && !rule?.action.kind && !pocket && !name ? knownMerchant(line.description) : null;
-    return { line, account: lineAccount, rule, pocket, name, merchant };
+    const free = !rule?.action.category_id && !rule?.action.kind && !pocket && !name;
+    const known = input.knownTransfers && free ? knownTransfer(line.description, line.amountMinor) : null;
+    const counterpart = known ? accountFor(known.counterpart, known.counterpartType) : null;
+    const transfer = known && counterpart && counterpart.id !== lineAccount ? { known, counterpart } : null;
+    const merchant = input.knownMerchants && free && !transfer ? knownMerchant(line.description) : null;
+    return { line, account: lineAccount, rule, pocket, name, merchant, transfer };
   });
 
   const kindOf = (r: Read): TransactionKind => {
     if (r.rule?.action.kind === "transfer" && r.line.amountMinor < 0) return "transfer";
-    if (r.pocket) return "transfer";
+    if (r.pocket || r.transfer) return "transfer";
     if (r.line.amountMinor < 0) return "expense";
     if (r.rule?.action.category_id && categories.find((c) => c.id === r.rule!.action.category_id)?.applies_to === "expense") return "refund";
     if (r.merchant && incomingKind(r.line.description) === "refund" && merchantCategory(categories, r.merchant, "refund")) return "refund";
@@ -209,7 +223,11 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
     };
     let tx: Transaction;
     if (kind === "transfer") {
-      if (!r.pocket) tx = { ...base, account_id: r.account, to_account_id: r.rule!.action.to_account_id ?? null };
+      if (r.transfer) {
+        tx = r.transfer.known.direction === "out"
+          ? { ...base, account_id: r.account, to_account_id: r.transfer.counterpart.id }
+          : { ...base, account_id: r.transfer.counterpart.id, to_account_id: r.account };
+      } else if (!r.pocket) tx = { ...base, account_id: r.account, to_account_id: r.rule!.action.to_account_id ?? null };
       else if (line.amountMinor < 0) tx = { ...base, account_id: r.account, to_account_id: r.pocket.id };
       else tx = { ...base, account_id: r.pocket.id, to_account_id: r.account };
     } else if (kind === "income") {
@@ -223,7 +241,8 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
     }
     const used = new Set([tx.account_id, tx.to_account_id].filter(Boolean));
     return {
-      transaction: tx, line, matchedRule: r.rule, source, matchedMerchant: source === "merchant" ? r.merchant : null, alreadyImported: input.existingIds.has(id), newCategory: toWrite,
+      transaction: tx, line, matchedRule: r.rule, source, matchedMerchant: source === "merchant" ? r.merchant : null,
+      matchedTransfer: r.transfer?.known ?? null, alreadyImported: input.existingIds.has(id), newCategory: toWrite,
       newAccounts: [...newAccounts.values()].filter((a) => used.has(a.id)),
     };
   });
