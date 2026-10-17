@@ -1,5 +1,0 @@
-*.xcodeproj/
-.build/
-.swiftpm/
-DerivedData/
-Fulla/Info.plist

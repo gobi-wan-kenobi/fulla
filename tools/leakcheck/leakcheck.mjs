@@ -46,6 +46,8 @@ const ALLOWED_IDENTITIES = [
   /^53468881\+SirAllap@users\.noreply\.github\.com$/i,
   /^noreply@anthropic\.com$/i,
   /^noreply@github\.com$/i,
+  // The fork owner (gobi-wan-kenobi): a no-reply address, nothing personal.
+  /^noreply@users\.noreply\.github\.com$/i,
 ];
 
 const BINARY = /\.(ttf|otf|woff2?|png|jpe?g|webp|gif|ico|jar|keystore|jks|zip|gz|pdf)$/i;
