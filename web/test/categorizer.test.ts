@@ -2,8 +2,10 @@
 // The optional categorizer model, with every network call mocked: nothing here
 // reaches OpenAI or Supabase. Transactions are invented.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MODEL_PARENTS, modelCategory, modelKey, parseAnswer, userPrompt, DEFAULT_CATEGORIZER_MODEL, SYSTEM_PROMPT } from "@/lib/categorizer";
-import { askModel, readItems } from "@/lib/server/categorizer";
+import {
+  MODEL_PARENTS, modelCategory, modelKey, nameMatch, normalizeLabel, parseAnswer, userPrompt, DEFAULT_CATEGORIZER_MODEL, SYSTEM_PROMPT,
+} from "@/lib/categorizer";
+import { RETRIES, TIMEOUT_MS, askModel, readItems } from "@/lib/server/categorizer";
 import { DEFAULT_CATEGORIES } from "@/lib/defaults";
 import type { Category } from "@/lib/model";
 
@@ -23,7 +25,7 @@ describe("the model's prompt and answer", () => {
   });
 
   it("reads its four lines, and nothing else", () => {
-    expect(parseAnswer(ANSWER)).toEqual({ parent: "Dining & Take\u2011out", subcategory: "Coffee Shops", spending: "flexible" });
+    expect(parseAnswer(ANSWER)).toEqual({ parent: "Dining & Take-out", subcategory: "Coffee Shops", spending: "flexible" });
     expect(parseAnswer("Parent Category: Utilities\nSubcategory: Internet\nSpending Type: Fixed")?.spending).toBe("fixed");
     expect(parseAnswer("I cannot help with that.")).toBeNull();
   });
@@ -50,6 +52,40 @@ describe("the model's prompt and answer", () => {
     ["Groceries", "Supermarket", "refund", "Groceries"],
   ])("%s / %s (%s) → %s", (parent, sub, kind, name) => {
     expect(modelCategory(cats, { parent, subcategory: sub, spending: null }, kind as "expense")?.name).toBe(name);
+  });
+
+  it("writes every kind of hyphen the model uses as '-'", () => {
+    for (const h of ["\u00ad", "\u2010", "\u2011", "\u2012", "\u2013", "\u2014", "\u2015", "\u2043", "\u2212", "\ufe63", "\uff0d"]) {
+      expect(normalizeLabel(`Take${h}out`)).toBe("Take-out");
+      expect(modelCategory(cats, { parent: `Dining & Take${h}out`, subcategory: null, spending: null }, "expense")?.name).toBe("Eating out");
+    }
+    expect(parseAnswer("Parent Category: Education & Self\u2011Improvement\nSubcategory: E\u2011books")).toMatchObject({
+      parent: "Education & Self-Improvement", subcategory: "E-books",
+    });
+  });
+
+  it("finds the household's own subcategory by a loose name", () => {
+    expect(nameMatch("Rent", "Rent / Mortgage")).toBe(1);
+    expect(nameMatch("Gifts & Flowers", "gift and flower")).toBe(2);
+    expect(nameMatch("Fuel", "Rent / Mortgage")).toBe(0);
+    const housing = cats.find((c) => c.name === "Housing")!;
+    const transport = cats.find((c) => c.name === "Transport")!;
+    const mine: Category[] = [
+      ...cats,
+      { ...housing, id: "rent", name: "Rent / Mortgage", parent_id: housing.id, sort: 50 },
+      { ...transport, id: "gas", name: "Gas & Fuel", parent_id: transport.id, sort: 51 },
+      { ...housing, id: "pets", name: "Pet Supplies", parent_id: null, sort: 52 },
+    ];
+    expect(modelCategory(mine, { parent: "Housing", subcategory: "Rent", spending: null }, "expense")?.name).toBe("Rent / Mortgage");
+    expect(modelCategory(mine, { parent: "Transportation", subcategory: "Fuel", spending: null }, "expense")?.name).toBe("Gas & Fuel");
+    expect(modelCategory(mine, { parent: "Housing", subcategory: "Property Tax", spending: null }, "expense")?.name).toBe("Housing");
+    // A category of the household's own, named exactly as the subcategory, wins over the parent's.
+    expect(modelCategory(mine, { parent: "Shopping", subcategory: "Pet supplies", spending: null }, "expense")?.name).toBe("Pet Supplies");
+    // Only a loose match elsewhere: the parent's category stays.
+    expect(modelCategory(mine, { parent: "Shopping", subcategory: "Pet food", spending: null }, "expense")?.name).toBe("Shopping");
+    // Never a catch-all, and never a category for the other kind of money.
+    expect(modelCategory(mine, { parent: "Shopping", subcategory: "Other", spending: null }, "expense")?.name).toBe("Shopping");
+    expect(modelCategory(mine, { parent: "Income", subcategory: "Rent", spending: null }, "income")?.name).toBe("Other income");
   });
 
   it("transfers, savings, unknown names and money the wrong way fall through to Other", () => {
@@ -102,18 +138,45 @@ describe("the server's call to the model (mocked)", () => {
     expect(f.mock.calls.length).toBeLessThanOrEqual(4); // the ones already in flight, no more
   });
 
-  it("a network error or an unreadable answer leaves that line unanswered", async () => {
-    let n = 0;
-    const f = vi.fn(async () => {
-      n++;
-      if (n === 1) throw new TypeError("fetch failed");
-      if (n === 2) return reply("no idea");
+  it("a network error twice or an unreadable answer leaves that line unanswered", async () => {
+    const f = vi.fn(async (_url: string, init: RequestInit) => {
+      const text = JSON.parse(String(init.body)).messages[1].content as string;
+      if (text.includes("LINE ONE")) throw new TypeError("fetch failed");
+      if (text.includes("LINE TWO")) return reply("no idea");
       return reply(ANSWER);
     });
-    const items = [1, 2, 3].map((i) => ({ ...item, id: `t${i}` }));
+    const items = ["LINE ONE", "LINE TWO", "LINE THREE"].map((d, i) => ({ ...item, id: `t${i}`, description: d }));
     const r = await askModel(items, { OPENAI_API_KEY: "k" }, f as unknown as typeof fetch);
-    expect(Object.keys(r.results)).toHaveLength(1);
+    expect(Object.keys(r.results)).toEqual(["t2"]);
     expect(r.stopped).toBe("error");
+    expect(f).toHaveBeenCalledTimes(4); // line one tried twice, the others once
+  });
+
+  it("waits 30 seconds by default, and tries once more after a timeout or a 5xx (a cold start)", async () => {
+    expect(TIMEOUT_MS).toBe(30000);
+    expect(RETRIES).toBe(1);
+    let n = 0;
+    const f = vi.fn((_url: string, init: RequestInit) => {
+      n++;
+      if (n === 1) {
+        // Never answers: the timeout aborts it.
+        return new Promise<Response>((_, reject) => init.signal!.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+      }
+      return Promise.resolve(reply(ANSWER));
+    });
+    const r = await askModel([item], { OPENAI_API_KEY: "k" }, f as unknown as typeof fetch, { timeoutMs: 20 });
+    expect(r).toEqual({ results: { t1: expect.objectContaining({ parent: "Dining & Take-out" }) }, stopped: null });
+    expect(f).toHaveBeenCalledTimes(2);
+
+    let m = 0;
+    const g = vi.fn(async () => (++m === 1 ? new Response("{}", { status: 503 }) : reply(ANSWER)));
+    expect(Object.keys((await askModel([item], { OPENAI_API_KEY: "k" }, g as unknown as typeof fetch)).results)).toEqual(["t1"]);
+    expect(g).toHaveBeenCalledTimes(2);
+
+    // A 400 is not a cold start: no second try.
+    const h = vi.fn(async () => new Response("{}", { status: 400 }));
+    expect((await askModel([item], { OPENAI_API_KEY: "k" }, h as unknown as typeof fetch)).stopped).toBe("error");
+    expect(h).toHaveBeenCalledTimes(1);
   });
 
   it("reads only well-formed items, at most 40, trimmed", () => {
@@ -167,6 +230,6 @@ describe("POST /api/categorize (mocked network)", () => {
     const { POST, GET } = await import("@/app/api/categorize/route");
     expect(await (await GET()).json()).toEqual({ enabled: true });
     const body = await (await POST(post("Bearer live"))).json();
-    expect(body.results.t1.parent).toBe("Dining & Take\u2011out");
+    expect(body.results.t1.parent).toBe("Dining & Take-out");
   });
 });

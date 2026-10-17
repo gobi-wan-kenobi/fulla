@@ -11,6 +11,7 @@ the full texts ship inside the app (Settings → About → Third-party licences)
 | Ktor client, OkHttp | Apache License 2.0 |
 | ZXing core, zxing-android-embedded | Apache License 2.0 |
 | Material icons | Apache License 2.0 |
+| PDF.js (Mozilla, `pdfjs-dist`, web app only) | Apache License 2.0 |
 
 Development-only tools (JUnit, Robolectric, Kover, PostgreSQL for tests) are
 not shipped in the app.

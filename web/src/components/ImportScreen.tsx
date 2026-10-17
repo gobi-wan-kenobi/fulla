@@ -6,20 +6,35 @@ import { fallbackCategory } from "@/lib/categorize";
 import { type ModelAnswer, modelCategory } from "@/lib/categorizer";
 import { randomId } from "@/lib/ids";
 import {
-  DATE_FORMATS, type ImportProfile, type SavedProfile, type StatementFormat, type StatementResult, columnValues, decodeText,
-  detectFormat, dropRepeatedBankIds, guessDelimiter, guessProfile, newAccounts, newCategories, ofxCurrency, previewCsv,
-  profileFromJson, profileToJson, propose, readCsv, readOfx, readQif,
+  DATE_FORMATS, type ImportProfile, type PdfProblem, type PdfStatementResult, type SavedProfile, type StatementFormat,
+  type StatementResult, PdfStatementError, columnValues, decodeText, detectFormat, dropRepeatedBankIds, extractPdfPages,
+  guessDelimiter, guessProfile, isPdf, newAccounts, newCategories, ofxCurrency, previewCsv, profileFromJson, profileToJson,
+  propose, readCsv, readOfx, readQif, readWealthsimpleChequing,
 } from "@/lib/importers";
+import { loadPdfJs } from "@/lib/importers/pdfBrowser";
 import { categoriesFor } from "@/lib/ledger";
 import { activeMembers, isCategorised, type Account, type Category, type Config, type Transaction } from "@/lib/model";
 import { currencyOf, formatMoney } from "@/lib/money";
 import type { LocalRow } from "@/lib/sync";
 import { Chip, EmptyState, PrimaryButton, ScreenHeader, Section } from "./Pieces";
 
+type Format = StatementFormat | "pdf";
+
+/** What to say when a PDF cannot be read, in words a person can act on. */
+const PDF_PROBLEMS: Record<PdfProblem, string> = {
+  "no-text": "That PDF has no text to read: it may be a scan or a photo. Download the statement from your bank's website or app instead, or export a CSV, OFX or QFX.",
+  "not-wealthsimple": "Fulla reads PDF statements from Wealthsimple chequing only, for now. For another bank, export a CSV, OFX or QFX from its website.",
+  "not-chequing": "That is not a Wealthsimple chequing statement. Fulla reads the chequing monthly statement PDF; for other accounts, export a CSV.",
+  "no-rows": "That statement has no transactions in it.",
+  unreadable: "That PDF could not be opened. It may be damaged; try downloading it again.",
+  password: "That PDF is locked with a password. Download an unlocked copy from your bank first.",
+};
+
 /**
  * A bank statement into the household, as the Android import screen: pick a
- * file (OFX, QFX, QIF or CSV, told apart by content), say which account it
- * is and, for CSV, which column is which; check the preview; import. The file
+ * file (OFX, QFX, QIF, CSV or a Wealthsimple chequing PDF, told apart by
+ * content), say which account it is and, for CSV, which column is which;
+ * check the preview (for a PDF, every running balance is checked); import. The file
  * is read here in the browser and never uploaded anywhere: only the rows you
  * import reach the household. Importing the same file twice changes nothing.
  */
@@ -34,8 +49,12 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
   const locale = config.household.locale || "en-CA";
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   const [fileName, setFileName] = useState("");
-  const [format, setFormat] = useState<StatementFormat>("csv");
+  const [format, setFormat] = useState<Format>("csv");
   const [unreadable, setUnreadable] = useState(false);
+  const [pdf, setPdf] = useState<PdfStatementResult | null>(null);
+  const [pdfProblem, setPdfProblem] = useState<PdfProblem | null>(null);
+  const [readingPdf, setReadingPdf] = useState(false);
+  const [acceptMismatch, setAcceptMismatch] = useState(false);
   const accounts = config.accounts.filter((a) => !a.archived);
   const [account, setAccount] = useState<string | null>(accounts[0]?.id ?? null);
   const [profile, setProfile] = useState<ImportProfile | null>(null);
@@ -49,10 +68,35 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
 
   async function pick(file: File) {
     const read = new Uint8Array(await file.arrayBuffer());
-    const f = detectFormat(read);
     setDone(null);
     setError(null);
     setOverrides({});
+    setPdf(null);
+    setPdfProblem(null);
+    setAcceptMismatch(false);
+    if (isPdf(read)) {
+      // Read here in the browser with PDF.js; the file goes nowhere.
+      setUnreadable(false);
+      setBytes(null);
+      setReadingPdf(true);
+      try {
+        const pages = await extractPdfPages(read, await loadPdfJs());
+        const statement = readWealthsimpleChequing(pages, currency);
+        setPdf(statement);
+        setFileName(file.name);
+        setFormat("pdf");
+        setProfileId(null);
+        const ws = accounts.find((a) => /wealthsimple/i.test(a.name) && /chequ|check/i.test(a.name));
+        if (ws) setAccount(ws.id);
+        setBytes(read);
+      } catch (e) {
+        setPdfProblem(e instanceof PdfStatementError ? e.problem : "unreadable");
+      } finally {
+        setReadingPdf(false);
+      }
+      return;
+    }
+    const f = detectFormat(read);
     if (!f) {
       setUnreadable(true);
       setBytes(null);
@@ -76,6 +120,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
 
   const result: StatementResult | null = useMemo(() => {
     if (!bytes) return null;
+    if (format === "pdf") return pdf ? { lines: pdf.lines, skipped: [] } : null;
     try {
       if (format === "ofx") return readOfx(bytes, currency);
       if (format === "qif") return readQif(bytes, currency, qifDate);
@@ -83,7 +128,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
     } catch {
       return null;
     }
-  }, [bytes, format, profile, qifDate, currency]);
+  }, [bytes, format, profile, qifDate, currency, pdf]);
   const deduped = useMemo(() => (result ? dropRepeatedBankIds(result.lines) : null), [result]);
 
   // Android falls back to the first category (Housing on a server-created household, which
@@ -137,12 +182,18 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
   const modelGuess = (t: Transaction) => {
     const a = answers[t.id];
     const c = a ? modelCategory(config.categories, a, t.kind) : null;
-    return c && a ? { category: c, fixed: !!c.fixed || (t.kind === "expense" && a.spending === "fixed") } : null;
+    // Fixed or flexible is the category's to say (categories.fixed), never the model's.
+    return c && a ? { category: c, fixed: !!c.fixed } : null;
   };
   const createdCategories = useMemo(() => newCategories(proposals), [proposals]);
   const createdAccounts = useMemo(() => newAccounts(proposals), [proposals]);
   const brandNew = createdCategories.filter((c) => !config.categories.some((k) => k.id === c.id));
-  const statedCurrency = bytes && format === "ofx" ? ofxCurrency(bytes) : null;
+  const statedCurrency = bytes && format === "ofx" ? ofxCurrency(bytes) : format === "pdf" && pdf ? pdf.currency : null;
+  // A PDF's running balances, checked line by line (wealthsimplePdf.ts): a line that does not add up
+  // was misread or is missing one before it, so the import waits until you have looked.
+  const balance = format === "pdf" && pdf ? pdf.balance : null;
+  const mismatchAt = useMemo(() => new Set((balance?.mismatches ?? []).map((m) => m.index)), [balance]);
+  const balanceBlocks = !!balance && !balance.ok && !acceptMismatch;
   const categoryName = (id: string | null) => config.categories.find((c) => c.id === id)?.name ?? createdCategories.find((c) => c.id === id)?.name ?? "";
 
   async function saveMapping() {
@@ -202,7 +253,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
         type="file"
         data-testid="file-input"
         className="hidden"
-        accept=".csv,.ofx,.qfx,.qif,.txt,text/csv,application/x-ofx,application/vnd.intu.qfx"
+        accept=".csv,.ofx,.qfx,.qif,.txt,.pdf,text/csv,application/x-ofx,application/vnd.intu.qfx,application/pdf"
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) void pick(f);
@@ -210,15 +261,43 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
         }}
       />
       {!bytes ? (
-        <EmptyState title="Bring in a statement" text="OFX, QFX, QIF or CSV from your bank. It is read here, on this phone; importing the same file again adds nothing twice.">
-          <PrimaryButton onClick={() => fileInput.current?.click()} testId="choose-file">Choose a file</PrimaryButton>
+        <EmptyState title="Bring in a statement" text="OFX, QFX, QIF or CSV from your bank, or a Wealthsimple chequing PDF. It is read here, on this phone; importing the same file again adds nothing twice.">
+          <PrimaryButton onClick={() => fileInput.current?.click()} busy={readingPdf} testId="choose-file">Choose a file</PrimaryButton>
+          {readingPdf && <p className="t-secondary text-ink-muted pt-4">Reading the PDF…</p>}
           {done !== null && <p className="t-body pt-4" data-testid="import-done">Imported {done} transaction{done === 1 ? "" : "s"}.</p>}
           {unreadable && <p className="t-body text-danger pt-4">That file is not a statement Fulla can read.</p>}
+          {pdfProblem && <p className="t-body text-danger pt-4" data-testid="pdf-problem">{PDF_PROBLEMS[pdfProblem]}</p>}
           {error && <p className="t-secondary text-danger pt-4">{error}</p>}
         </EmptyState>
       ) : (
         <>
-          <p className="t-secondary text-ink-muted px-5">{fileName} · {format === "ofx" ? "OFX / QFX" : format.toUpperCase()}</p>
+          <p className="t-secondary text-ink-muted px-5">
+            {fileName} · {format === "ofx" ? "OFX / QFX" : format === "pdf" ? `Wealthsimple chequing PDF${pdf?.period ? `, ${pdf.period}` : ""}` : format.toUpperCase()}
+          </p>
+          {balance && balance.ok && (
+            <p className="t-secondary text-money-in px-5 pt-2" data-testid="balance-ok">
+              Every running balance adds up
+              {balance.openingMinor !== null && balance.closingMinor !== null
+                ? `: ${formatMoney(balance.openingMinor, "CAD", locale)} to ${formatMoney(balance.closingMinor, "CAD", locale)}.`
+                : "."}
+            </p>
+          )}
+          {balance && !balance.ok && (
+            <div className="px-5 pt-2" data-testid="balance-mismatch">
+              <p className="t-secondary text-danger">
+                {balance.mismatches.length > 0
+                  ? `${balance.mismatches.length} ${balance.mismatches.length === 1 ? "line does" : "lines do"} not add up to the balance the statement prints (marked below). A line may have been misread or missed.`
+                  : ""}
+                {balance.closingMatches === false
+                  ? ` The last balance is not the closing balance of ${formatMoney(balance.closingMinor ?? 0, "CAD", locale)}.`
+                  : ""}
+              </p>
+              <label className="t-secondary flex items-center gap-2 pt-2">
+                <input type="checkbox" checked={acceptMismatch} onChange={(e) => setAcceptMismatch(e.target.checked)} data-testid="accept-mismatch" />
+                I have checked these lines; import anyway
+              </label>
+            </div>
+          )}
           {statedCurrency && statedCurrency !== currency.code && (
             <p className="t-secondary text-warning px-5 pt-2">This statement is in {statedCurrency}; the household counts in {currency.code}. Amounts are read as {currency.code}.</p>
           )}
@@ -304,7 +383,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
             </button>
           )}
           <div className="mt-2">
-            {proposals.slice(0, 200).map((p) => {
+            {proposals.slice(0, 200).map((p, i) => {
               const t = p.transaction;
               const guess = p.source === "fallback" && !p.alreadyImported ? modelGuess(t) : null;
               const cat = overrides[t.id] ?? guess?.category.id ?? t.category_id;
@@ -329,6 +408,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
                       ) : (
                         <span>· transfer</span>
                       )}
+                      {mismatchAt.has(i) && <span className="text-danger" data-testid="row-mismatch">· balance does not add up</span>}
                       {!overrides[t.id] && !p.alreadyImported && (
                         p.source === "rule" && p.matchedRule ? <span data-testid="by-rule">· by rule “{p.matchedRule.pattern}”</span>
                           : p.source === "merchant" ? <span data-testid="by-merchant">· known shop</span>
@@ -343,10 +423,10 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
           </div>
           {error && <p className="t-secondary text-danger px-5 pt-3">{error}</p>}
           <div className="p-5 grid gap-3">
-            <PrimaryButton onClick={() => void runImport()} disabled={fresh.length === 0} busy={busy} testId="import-run">
+            <PrimaryButton onClick={() => void runImport()} disabled={fresh.length === 0 || balanceBlocks} busy={busy} testId="import-run">
               Import {fresh.length}
             </PrimaryButton>
-            <button type="button" className="t-secondary text-ink-muted py-2" onClick={() => setBytes(null)}>Cancel</button>
+            <button type="button" className="t-secondary text-ink-muted py-2" onClick={() => { setBytes(null); setPdf(null); }}>Cancel</button>
           </div>
         </>
       )}

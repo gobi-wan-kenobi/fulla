@@ -8,6 +8,8 @@ import { askModel, categorizerEnabled, readItems } from "@/lib/server/categorize
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// A cold fine-tuned model can take most of a minute to answer the first time (30 s timeout, one retry).
+export const maxDuration = 120;
 
 const env = () => ({
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,

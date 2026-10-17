@@ -11,3 +11,5 @@ export * from "./plan";
 export * from "./profiles";
 export * from "./detect";
 export * from "./guess";
+export * from "./wealthsimplePdf";
+export * from "./pdf";

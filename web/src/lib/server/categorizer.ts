@@ -10,7 +10,10 @@ import { DEFAULT_CATEGORIZER_MODEL, type ModelAnswer, type ModelItem, SYSTEM_PRO
 
 export const MAX_ITEMS = 40;
 const CONCURRENCY = 4;
-const TIMEOUT_MS = 15000;
+/** Long enough for a fine-tuned model's cold start, which can take well over ten seconds. */
+export const TIMEOUT_MS = 30000;
+/** One more try after a timeout, a network error or a 5xx/408: a cold model often answers the second time. */
+export const RETRIES = 1;
 
 export interface CategorizerEnv {
   OPENAI_API_KEY?: string;
@@ -31,7 +34,11 @@ export interface Answered {
 type Fetch = typeof fetch;
 
 /** Asks the model about each item (one request each, a few at a time). Never throws. */
-export async function askModel(items: ModelItem[], env: CategorizerEnv, doFetch: Fetch = fetch): Promise<Answered> {
+export async function askModel(
+  items: ModelItem[], env: CategorizerEnv, doFetch: Fetch = fetch, opts: { timeoutMs?: number; retries?: number } = {},
+): Promise<Answered> {
+  const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS;
+  const retries = opts.retries ?? RETRIES;
   if (!categorizerEnabled(env)) return { results: {}, stopped: "off" };
   const model = env.FULLA_CATEGORIZER_MODEL?.trim() || DEFAULT_CATEGORIZER_MODEL;
   const base = (env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1").replace(/\/+$/, "");
@@ -39,10 +46,10 @@ export async function askModel(items: ModelItem[], env: CategorizerEnv, doFetch:
   let stopped: Answered["stopped"] = null;
   const queue = items.slice(0, MAX_ITEMS);
 
-  async function one(item: ModelItem) {
-    if (stopped === "quota") return;
+  /** One request: an answer, a reason to stop asking, or "retry" for a failure worth one more try. */
+  async function attempt(item: ModelItem): Promise<ModelAnswer | null | "quota" | "retry" | "error"> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await doFetch(`${base}/chat/completions`, {
         method: "POST",
@@ -56,20 +63,31 @@ export async function askModel(items: ModelItem[], env: CategorizerEnv, doFetch:
         signal: controller.signal,
       });
       if (!res.ok) {
-        // 429 is a rate limit or, with insufficient_quota, no credit: stop asking either way.
-        if (res.status === 429 || res.status === 401 || res.status === 403) stopped = "quota";
-        else stopped ??= "error";
+        // Only the status is logged, never the request or the answer.
         console.warn(`categorizer: model answered ${res.status}; falling through`);
-        return;
+        // 429 is a rate limit or, with insufficient_quota, no credit: stop asking either way.
+        if (res.status === 429 || res.status === 401 || res.status === 403) return "quota";
+        return res.status >= 500 || res.status === 408 ? "retry" : "error";
       }
       const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-      const answer = parseAnswer(body.choices?.[0]?.message?.content ?? "");
-      if (answer) results[item.id] = answer;
+      return parseAnswer(body.choices?.[0]?.message?.content ?? "");
     } catch (e) {
-      stopped ??= "error";
       console.warn(`categorizer: ${e instanceof Error ? e.name : "error"}; falling through`);
+      return "retry";
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  async function one(item: ModelItem) {
+    for (let tries = 0; tries <= retries; tries++) {
+      if (stopped === "quota") return;
+      const got = await attempt(item);
+      if (got === "retry" && tries < retries) continue;
+      if (got === "quota") stopped = "quota";
+      else if (got === "retry" || got === "error") stopped ??= "error";
+      else if (got) results[item.id] = got;
+      return;
     }
   }
 

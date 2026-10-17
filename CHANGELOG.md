@@ -8,6 +8,8 @@ All notable changes to Fulla are recorded here. The format follows
 
 ### Added
 
+- Web: import Wealthsimple chequing PDF statements, read in the browser, with
+  every running balance checked.
 - Database schema for households, members, invites, accounts, categories,
   custom fields, budgets, recurring rules, categorisation rules, import
   profiles and transactions.

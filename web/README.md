@@ -24,11 +24,25 @@ Next.js (App Router) · TypeScript · Tailwind · `@supabase/supabase-js` / `@su
   gets the same id, so a file imported again adds nothing; a transaction id
   (FITID) repeated inside one OFX/QFX file is kept once. UTF-8, and
   Windows-1252 / ISO-8859-1 files, are read correctly.
+- Wealthsimple chequing PDF statements (`src/lib/importers/wealthsimplePdf.ts`),
+  read in the browser with PDF.js; the file is never uploaded, and PDF.js's
+  worker is served from this site (`scripts/copy-pdf-worker.mjs` copies it into
+  `public/pdfjs` before `dev` and `build`). Rows across pages, wrapped
+  descriptions and the opening and closing balances are read, and every
+  running balance is checked to the cent: a line that does not add up is
+  marked in the preview and the import waits until it is confirmed. Other
+  PDFs (another bank, a scan, a locked file) are refused with a reason. Lines
+  are dated by when they happened (the statement's Date column). Tests build
+  an invented statement as a PDF (`test/pdfFixture.ts`).
 - Categorisation of imported and typed transactions, in this order: the
   household's rules ("note contains … → category"), then a built-in list of
   common Canadian merchants (`src/lib/merchants.ts`, statement strings cleaned
   of store numbers, `*`, processor prefixes and "CITY ON"), then the optional
-  categorizer model, then Other / Other income. Rules can be added, edited,
+  categorizer model (off without `OPENAI_API_KEY`; `FULLA_CATEGORIZER_MODEL`
+  picks the model; a 30 s timeout with one retry for a cold start; its
+  subcategory is matched loosely to the household's own subcategories, and
+  whether spending is fixed is the category's to say, not the model's), then
+  Other / Other income. Rules can be added, edited,
   paused and deleted in Settings → Categories, created from a transaction when
   its category is changed, and applied to what is still in Uncategorized or
   Other.
