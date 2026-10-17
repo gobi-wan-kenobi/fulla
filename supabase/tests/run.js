@@ -717,6 +717,39 @@ test('categorisation rules must do something valid', (ctx) => {
   fails({ id: uuid(), pattern: '', action: { tags: ['a'] } });
 });
 
+test('a deleted rule is archived, and a save that leaves `archived` out keeps it', (ctx) => {
+  const save = (r) => rpc(ctx.db, ctx.alice, 'fulla_rule_upsert', { p_household_id: ctx.hh, p_rule: r });
+  const rule = { id: uuid(), pattern: 'TIM HORTONS', action: { category_id: ctx.cat('Groceries') } };
+  const find = (cfg) => cfg.categorization_rules.find((r) => r.id === rule.id);
+  assert.equal(find(save(rule)).archived, false, 'not archived unless said');
+  const gone = find(save({ ...rule, active: false, archived: true }));
+  assert.equal(gone.archived, true);
+  assert.equal(gone.active, false);
+  // A phone that has not heard of `archived` edits it: it stays deleted.
+  assert.equal(find(save({ ...rule, pattern: 'TIMS', active: false })).archived, true);
+  assert.equal(find(save({ ...rule, archived: false, active: true })).archived, false, 'and it can be brought back');
+  const r = ctx.db.admin(`delete from fulla.categorization_rules where id = '${rule.id}';`, { expectFailure: true });
+  assert.equal(r.err.detail, 'delete_forbidden');
+});
+
+test('a category can be fixed spending, and a save that leaves `fixed` out keeps it', (ctx) => {
+  const id = ctx.cat('Utilities');
+  const base = ctx.config().categories.find((c) => c.id === id);
+  assert.equal(base.fixed, false, 'flexible unless said');
+  const save = (c) => rpc(ctx.db, ctx.alice, 'fulla_category_upsert', { p_household_id: ctx.hh, p_category: c }).categories.find((k) => k.id === id);
+  const { fixed: _f, ...withoutFixed } = base;
+  assert.equal(save({ ...base, fixed: true }).fixed, true);
+  assert.equal(save({ ...withoutFixed, name: 'Bills' }).fixed, true, 'an older phone renaming it keeps it fixed');
+  assert.equal(save({ ...base, name: 'Bills', fixed: false }).fixed, false);
+  expectError(ctx.db, ctx.alice, 'fulla_category_upsert', { p_household_id: ctx.hh, p_category: { ...base, fixed: 'yes' } }, 'validation_failed');
+  const fresh = rpc(ctx.db, ctx.alice, 'fulla_category_upsert', { p_household_id: ctx.hh, p_category: { id: uuid(), name: 'Rent' } }).categories.find((c) => c.name === 'Rent');
+  assert.equal(fresh.fixed, false);
+});
+
+test('the schema version is the migration count', (ctx) => {
+  assert.equal(rpc(ctx.db, ctx.alice, 'fulla_schema_version', {}), h.migrations().length);
+});
+
 test('ids belong to one household: another household cannot reuse them', (ctx) => {
   const other = newUser(ctx.db, 'frank@example.com');
   const hh2 = rpc(ctx.db, other, 'fulla_household_create', { p_name: 'Other', p_currency: 'EUR', p_locale: 'en', p_display_name: 'Frank', p_initials: 'F' }).household_id;

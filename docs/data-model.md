@@ -29,11 +29,11 @@ this page explains them.
 | `members` | People in a household. `user_id` is null for members without an account. `role`: owner, admin, member. `status`: active, archived, removed |
 | `invites` | Single-use codes with expiry, optionally earmarked to claim a member without an account |
 | `accounts` | Cash, checking, savings, credit card or other, with an opening balance and, optionally, a round-up (`round_up_to`, `round_up_multiplier`) |
-| `categories` | One level of nesting; each applies to expenses, income or both |
+| `categories` | One level of nesting; each applies to expenses, income or both. `fixed` marks fixed spending (rent, bills), the default for its transactions' `recurrence` |
 | `custom_fields` | Household-defined fields; values live in `transactions.extras` under the field's `key`. `category_ids` limits one to some categories (and their subcategories), where it is asked as one more level |
 | `budgets` | A limit per category and period (`YYYY-MM`), or for every period when `period` is null |
 | `recurring_rules` | A transaction template and a schedule: daily, weekly, monthly (every N months from the start month, or only the months in `by_months`) or yearly |
-| `categorization_rules` | "Note contains X → category / transfer / tags", used on import |
+| `categorization_rules` | "Note contains X → category / transfer / tags", used on import. `archived` is a deleted rule, never matched |
 | `import_profiles` | How to read a particular CSV layout |
 | `transactions` | Everything that happened |
 | `trips` | A trip or event with its own optional budget: name, date range, `in_category_budgets` |

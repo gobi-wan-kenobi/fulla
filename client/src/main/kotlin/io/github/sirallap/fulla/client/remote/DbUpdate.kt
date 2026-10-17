@@ -11,7 +11,7 @@ import java.net.URI
  * (first in `supabase/migrations/0016_schema_version.sql`, since redefined by
  * later migrations); a Kotlin test reads the migrations' SQL and fails if the two drift apart.
  */
-const val EXPECTED_SCHEMA_VERSION = 22
+const val EXPECTED_SCHEMA_VERSION = 23
 
 /** What Settings should tell the owner about the backend's schema. */
 sealed class DbUpdateStatus {

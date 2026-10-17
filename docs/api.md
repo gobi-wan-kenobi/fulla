@@ -83,7 +83,10 @@ active member with at least the role shown.
 ### Structure
 
 All return the full config (below). Nothing is deleted: set `archived: true`
-(or `active: false` for rules and recurring items).
+(or `active: false` to pause rules and recurring items; a deleted rule is
+`archived: true`). A category's `fixed: true` marks fixed spending, the
+default `recurrence` a transaction put in it gets. Leaving `archived` (rules)
+or `fixed` (categories) out of a save keeps what is stored.
 
 | Function | Role |
 |---|---|
