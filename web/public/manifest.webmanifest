@@ -1,0 +1,16 @@
+{
+  "name": "Fulla",
+  "short_name": "Fulla",
+  "description": "Household finances for the two of you.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#faf8f3",
+  "theme_color": "#1b1830",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

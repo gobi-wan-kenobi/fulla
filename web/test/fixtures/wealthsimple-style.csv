@@ -1,0 +1,6 @@
+date,transaction,description,amount,balance
+2030-03-01,DEP,"Deposit from EXAMPLE BANK",500.00,500.00
+2030-03-02,SPEND,"Purchase at GROCERY STORE 03",-61.37,438.63
+2030-03-03,SPEND,"Purchase at CITY TRANSIT",-3.35,435.28
+2030-03-05,INT,"Interest",0.84,436.12
+2030-03-06,SPEND,"Purchase at CAFÉ EXEMPLE",-6.25,429.87

@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+"use client";
+import { useState } from "react";
+import { api, type Membership } from "@/lib/api";
+import type { Config } from "@/lib/model";
+import { Avatar, Chip, ScreenHeader, Section, SecondaryButton } from "./Pieces";
+
+export function SettingsScreen({ config, households, onSwitch, onSignOut, onAddHousehold }: {
+  config: Config;
+  households: Membership[];
+  onSwitch: (id: string) => void;
+  onSignOut: () => void;
+  onAddHousehold: () => void;
+}) {
+  const [invite, setInvite] = useState<{ code: string; expires_at: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const me = config.members.find((m) => m.id === config.me_member_id);
+  const canInvite = me?.role === "owner" || me?.role === "admin";
+
+  return (
+    <div>
+      <ScreenHeader title="Settings" />
+      <Section>Household</Section>
+      <div className="px-5 t-body" data-testid="household-name">{config.household.name}</div>
+      <div className="px-5 t-secondary text-ink-muted" data-testid="household-currency">Counts in {config.household.currency}</div>
+      {households.length > 1 && (
+        <div className="flex gap-2 px-5 pt-3 overflow-x-auto">
+          {households.map((h) => <Chip key={h.household_id} label={h.name} selected={h.household_id === config.household.id} onClick={() => onSwitch(h.household_id)} />)}
+        </div>
+      )}
+      <Section>People</Section>
+      {config.members.filter((m) => m.status === "active").map((m) => (
+        <div key={m.id} className="flex items-center gap-4 px-5 py-2">
+          <Avatar initials={m.initials} colorIndex={m.color_index} />
+          <div>
+            <div className="t-body">{m.display_name}{m.id === config.me_member_id ? " (you)" : ""}</div>
+            <div className="t-secondary text-ink-muted">{m.role}</div>
+          </div>
+        </div>
+      ))}
+      {canInvite && (
+        <div className="px-5 pt-3">
+          {invite ? (
+            <div className="rounded-2xl bg-paper-high p-4">
+              <div className="t-label text-ink-muted">Invite code, valid until {new Date(invite.expires_at).toLocaleString()}</div>
+              <div className="t-title tracking-widest pt-1 select-all" data-testid="invite-code">{invite.code}</div>
+              <div className="t-secondary text-ink-muted pt-1">They sign up in Fulla, choose “I have an invite” and type it.</div>
+            </div>
+          ) : (
+            <SecondaryButton
+              onClick={async () => {
+                try {
+                  setInvite(await api.inviteCreate(config.household.id, "member"));
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : String(e));
+                }
+              }}
+            >
+              Invite someone
+            </SecondaryButton>
+          )}
+        </div>
+      )}
+      <Section>Accounts</Section>
+      {config.accounts.filter((a) => !a.archived).map((a) => (
+        <div key={a.id} className="px-5 py-2 t-body">{a.name} <span className="t-secondary text-ink-muted">· {a.type.replace("_", " ")}</span></div>
+      ))}
+      {error && <p className="t-secondary text-danger px-5 pt-3">{error}</p>}
+      <div className="p-5 grid gap-3">
+        <SecondaryButton onClick={onAddHousehold}>Another household</SecondaryButton>
+        <SecondaryButton danger onClick={onSignOut}>Sign out</SecondaryButton>
+      </div>
+      <p className="t-label text-ink-muted px-5 pb-8">Fulla is free software (GPL-3.0-or-later). Accounts, categories and rules are edited in the Android app for now.</p>
+    </div>
+  );
+}

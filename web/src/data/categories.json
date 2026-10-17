@@ -1,0 +1,23 @@
+{
+  "categories": [
+    {"key": "housing", "applies_to": "expense", "icon": "home", "color_index": 0, "name": {"en": "Housing", "es": "Vivienda", "fr": "Logement", "de": "Wohnen", "it": "Casa", "pt": "Habitação"}},
+    {"key": "groceries", "applies_to": "expense", "icon": "shopping_cart", "color_index": 1, "name": {"en": "Groceries", "es": "Supermercado", "fr": "Courses", "de": "Lebensmittel", "it": "Spesa", "pt": "Supermercado"}},
+    {"key": "eating_out", "applies_to": "expense", "icon": "restaurant", "color_index": 2, "name": {"en": "Eating out", "es": "Comer fuera", "fr": "Restaurants", "de": "Auswärts essen", "it": "Mangiare fuori", "pt": "Comer fora"}},
+    {"key": "transport", "applies_to": "expense", "icon": "directions_bus", "color_index": 3, "name": {"en": "Transport", "es": "Transporte", "fr": "Transports", "de": "Verkehr", "it": "Trasporti", "pt": "Transportes"}},
+    {"key": "utilities", "applies_to": "expense", "icon": "bolt", "color_index": 4, "name": {"en": "Utilities", "es": "Suministros", "fr": "Factures", "de": "Nebenkosten", "it": "Utenze", "pt": "Contas da casa"}},
+    {"key": "subscriptions", "applies_to": "expense", "icon": "subscriptions", "color_index": 5, "name": {"en": "Subscriptions", "es": "Suscripciones", "fr": "Abonnements", "de": "Abos", "it": "Abbonamenti", "pt": "Assinaturas"}},
+    {"key": "health", "applies_to": "expense", "icon": "favorite", "color_index": 6, "name": {"en": "Health", "es": "Salud", "fr": "Santé", "de": "Gesundheit", "it": "Salute", "pt": "Saúde"}},
+    {"key": "shopping", "applies_to": "expense", "icon": "shopping_bag", "color_index": 7, "name": {"en": "Shopping", "es": "Compras", "fr": "Achats", "de": "Einkäufe", "it": "Acquisti", "pt": "Compras"}},
+    {"key": "leisure", "applies_to": "expense", "icon": "sports_esports", "color_index": 8, "name": {"en": "Leisure", "es": "Ocio", "fr": "Loisirs", "de": "Freizeit", "it": "Tempo libero", "pt": "Lazer"}},
+    {"key": "education", "applies_to": "expense", "icon": "school", "color_index": 9, "name": {"en": "Education", "es": "Educación", "fr": "Éducation", "de": "Bildung", "it": "Istruzione", "pt": "Educação"}},
+    {"key": "gifts", "applies_to": "expense", "icon": "redeem", "color_index": 10, "name": {"en": "Gifts", "es": "Regalos", "fr": "Cadeaux", "de": "Geschenke", "it": "Regali", "pt": "Presentes"}},
+    {"key": "other", "applies_to": "expense", "icon": "more_horiz", "color_index": 11, "name": {"en": "Other", "es": "Otros gastos", "fr": "Autres dépenses", "de": "Sonstiges", "it": "Altre spese", "pt": "Outras despesas"}},
+    {"key": "salary", "applies_to": "income", "icon": "payments", "color_index": 0, "name": {"en": "Salary", "es": "Salario", "fr": "Salaire", "de": "Gehalt", "it": "Stipendio", "pt": "Salário"}},
+    {"key": "other_income", "applies_to": "income", "icon": "savings", "color_index": 1, "name": {"en": "Other income", "es": "Otros ingresos", "fr": "Autres revenus", "de": "Sonstige Einnahmen", "it": "Altre entrate", "pt": "Outras receitas"}}
+  ],
+  "uncategorized": {"key": "uncategorized", "applies_to": "both", "icon": "help", "color_index": 11, "name": {"en": "Uncategorized", "es": "Sin categoría", "fr": "Sans catégorie", "de": "Ohne Kategorie", "it": "Senza categoria", "pt": "Sem categoria"}},
+  "accounts": [
+    {"key": "cash", "type": "cash", "name": {"en": "Cash", "es": "Efectivo", "fr": "Espèces", "de": "Bargeld", "it": "Contanti", "pt": "Dinheiro"}},
+    {"key": "main", "type": "checking", "name": {"en": "Main account", "es": "Cuenta principal", "fr": "Compte principal", "de": "Hauptkonto", "it": "Conto principale", "pt": "Conta principal"}}
+  ]
+}

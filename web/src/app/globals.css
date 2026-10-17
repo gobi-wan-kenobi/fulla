@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+/* Archivo (SIL OFL 1.1), bundled as the Android app bundles it: no font is downloaded from anyone else. */
+@font-face {
+  font-family: "Archivo";
+  src: url("/fonts/archivo.woff2") format("woff2");
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-display: swap;
+}
+
+/*
+ * Fulla's colours, from core/.../design/Colors.kt (BaseColors, MoneyPalette.INK,
+ * IdentityColors). Screens ask for a role, never a hex value.
+ */
+:root {
+  --paper: #faf8f3;
+  --paper-high: #f2eee5;
+  --ink: #1b1830;
+  --ink-muted: #625c6e;
+  --line: #e3ddcf;
+  --accent: #1b1830;
+  --on-accent: #f6f1e7;
+  --warning: #8a5010;
+  --danger: #b8223f;
+  --highlight: #e9b949;
+  --on-highlight: #1b1830;
+  --money-in: #7a5608;
+  --money-out: #3b3648;
+  --m0: #7a5a0e; --m1: #0a6e55; --m2: #b0452a; --m3: #1f5e73; --m4: #8f3e8a;
+  --m5: #4b3f8f; --m6: #c0254e; --m7: #2f6b3a; --m8: #3d5a8f; --m9: #7a4b2a;
+  --c10: #4d5b6b; --c11: #6b6480;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #13111b;
+    --paper-high: #1e1b29;
+    --ink: #f3efe6;
+    --ink-muted: #a8a2b5;
+    --line: #2f2b3d;
+    --accent: #e9b949;
+    --on-accent: #1b1830;
+    --warning: #f0ae62;
+    --danger: #ff7a9c;
+    --highlight: #e9b949;
+    --on-highlight: #1b1830;
+    --money-in: #ebc766;
+    --money-out: #b6b0c2;
+    --m0: #e9c66a; --m1: #4fd1b0; --m2: #f29a7e; --m3: #8fd0dd; --m4: #e3a2dd;
+    --m5: #b8adeb; --m6: #ff7a9c; --m7: #a6d6a3; --m8: #9db6ff; --m9: #e0b08a;
+    --c10: #b7c3d0; --c11: #a49cbb;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-high: var(--paper-high);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-highlight: var(--highlight);
+  --color-on-highlight: var(--on-highlight);
+  --color-money-in: var(--money-in);
+  --color-money-out: var(--money-out);
+  --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+/* FullaType, in px for sp. */
+.t-screen-title { font-size: 28px; line-height: 34px; font-weight: 600; }
+.t-title { font-size: 20px; line-height: 26px; font-weight: 600; }
+.t-body { font-size: 16px; line-height: 22px; font-weight: 400; }
+.t-secondary { font-size: 14px; line-height: 19px; font-weight: 400; }
+.t-section { font-size: 14px; line-height: 19px; font-weight: 600; letter-spacing: 0.2px; }
+.t-label { font-size: 12px; line-height: 15px; font-weight: 500; }
+.t-amount { font-size: 17px; line-height: 22px; font-weight: 500; font-stretch: 88%; font-feature-settings: "tnum"; }
+.t-entry-amount { font-size: 44px; line-height: 48px; font-weight: 500; font-stretch: 75%; font-feature-settings: "tnum"; }
+.t-hero { font-size: 52px; line-height: 56px; font-weight: 500; font-stretch: 75%; font-feature-settings: "tnum"; }
+.t-key { font-size: 26px; font-weight: 400; font-feature-settings: "tnum"; }
+
+/* Things yield: 3 % under the finger (docs/design.md, Motion). */
+.yields { transition: transform 120ms cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+.yields:active { transform: scale(0.97); }
+@media (prefers-reduced-motion: reduce) {
+  .yields, .yields:active { transition: none; transform: none; }
+}
+
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+.safe-top { padding-top: env(safe-area-inset-top); }
