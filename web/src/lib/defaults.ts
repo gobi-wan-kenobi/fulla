@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import data from "@/data/categories.json";
+import web from "@/data/web-categories.json";
 import type { AppliesTo } from "./model";
+
+export interface DefaultSubcategory {
+  key: string;
+  name: Record<string, string>;
+}
 
 export interface DefaultCategory {
   key: string;
@@ -8,8 +14,19 @@ export interface DefaultCategory {
   icon: string;
   color_index: number;
   name: Record<string, string>;
+  /** Web fork only: spending in it is usually the same every month. */
+  fixed?: boolean;
+  /** Web fork only: the subcategories a new household gets under it. */
+  subcategories?: DefaultSubcategory[];
 }
 
-/** What a new household starts with, from testdata/defaults/categories.json (core's Defaults). */
-export const DEFAULT_CATEGORIES: DefaultCategory[] = data.categories as DefaultCategory[];
+/** The phone's starting categories, from testdata/defaults/categories.json (core's Defaults). */
+export const SHARED_DEFAULT_CATEGORIES: DefaultCategory[] = data.categories as DefaultCategory[];
+/** The web fork's own starting categories (testdata/defaults/web-categories.json, fulla.web_defaults()). */
+export const WEB_DEFAULT_CATEGORIES: DefaultCategory[] = web.categories as DefaultCategory[];
+/** What a new household starts with: the shared defaults, then the web's (Debt payments). */
+export const DEFAULT_CATEGORIES: DefaultCategory[] = [...SHARED_DEFAULT_CATEGORIES, ...WEB_DEFAULT_CATEGORIES];
 export const UNCATEGORIZED: DefaultCategory = data.uncategorized as DefaultCategory;
+
+export const DEBT_KEY = "debt_payments";
+export type DebtKind = "personal_loan" | "line_of_credit" | "bnpl" | "student_loan" | "car_loan" | "other_debt";

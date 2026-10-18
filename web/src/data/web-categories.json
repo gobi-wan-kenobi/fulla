@@ -1,0 +1,87 @@
+{
+  "categories": [
+    {
+      "key": "debt_payments",
+      "applies_to": "expense",
+      "icon": "account_balance",
+      "color_index": 9,
+      "fixed": true,
+      "name": {
+        "en": "Debt payments",
+        "es": "Pago de deudas",
+        "fr": "Remboursements",
+        "de": "Schuldentilgung",
+        "it": "Rate dei debiti",
+        "pt": "Pagamento de dívidas"
+      },
+      "subcategories": [
+        {
+          "key": "personal_loan",
+          "name": {
+            "en": "Personal loan",
+            "es": "Préstamo personal",
+            "fr": "Prêt personnel",
+            "de": "Privatkredit",
+            "it": "Prestito personale",
+            "pt": "Empréstimo pessoal"
+          }
+        },
+        {
+          "key": "line_of_credit",
+          "name": {
+            "en": "Line of credit",
+            "es": "Línea de crédito",
+            "fr": "Marge de crédit",
+            "de": "Kreditlinie",
+            "it": "Linea di credito",
+            "pt": "Linha de crédito"
+          }
+        },
+        {
+          "key": "bnpl",
+          "name": {
+            "en": "Buy now pay later",
+            "es": "Compra ahora, paga después",
+            "fr": "Achat maintenant, paiement plus tard",
+            "de": "Jetzt kaufen, später zahlen",
+            "it": "Compra ora, paga dopo",
+            "pt": "Compre agora, pague depois"
+          }
+        },
+        {
+          "key": "student_loan",
+          "name": {
+            "en": "Student loan",
+            "es": "Préstamo estudiantil",
+            "fr": "Prêt étudiant",
+            "de": "Studienkredit",
+            "it": "Prestito studentesco",
+            "pt": "Empréstimo estudantil"
+          }
+        },
+        {
+          "key": "car_loan",
+          "name": {
+            "en": "Car loan",
+            "es": "Préstamo del coche",
+            "fr": "Prêt auto",
+            "de": "Autokredit",
+            "it": "Prestito auto",
+            "pt": "Empréstimo automóvel"
+          }
+        },
+        {
+          "key": "other_debt",
+          "name": {
+            "en": "Other debt",
+            "es": "Otras deudas",
+            "fr": "Autres dettes",
+            "de": "Sonstige Schulden",
+            "it": "Altri debiti",
+            "pt": "Outras dívidas"
+          }
+        }
+      ]
+    }
+  ]
+}

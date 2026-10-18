@@ -114,7 +114,7 @@ describe("shared rules and data", () => {
   });
 
   it("the web's copies of the defaults are the repository's", () => {
-    for (const f of ["currencies.json", "categories.json"]) {
+    for (const f of ["currencies.json", "categories.json", "web-categories.json"]) {
       expect(JSON.parse(readFileSync(join(__dirname, "../src/data", f), "utf8"))).toEqual(JSON.parse(readFileSync(join(root, "testdata/defaults", f), "utf8")));
     }
     expect(MINOR_UNITS.CAD).toBe(2);

@@ -5,9 +5,9 @@
 import { DEFAULT_CATEGORIES } from "../defaults";
 import { importedId, sha256Hex, uuid5 } from "../ids";
 import type { Account, AppliesTo, CategorizationRule, Category, Member, Split, Transaction, TransactionKind } from "../model";
-import { type CategorySource, incomingKind, knownMerchant, matchRule, merchantCategory, type MerchantMatch } from "../categorize";
+import { type CategorySource, debtCategory, incomingKind, knownMerchant, matchRule, merchantCategory, type MerchantMatch } from "../categorize";
 import { normalizeName } from "../text";
-import { type KnownTransfer, knownTransfer } from "../transfers";
+import { type KnownDebt, type KnownTransfer, knownDebt, knownTransfer } from "../transfers";
 import { defaultKeys, iconFor, synonymsOf } from "./hints";
 import type { StatementLine } from "./types";
 
@@ -23,6 +23,8 @@ export interface ProposedTransaction {
   matchedMerchant: MerchantMatch | null;
   /** Web only: the built-in transfer pattern that made this line a transfer (transfers.ts), when one did. */
   matchedTransfer?: KnownTransfer | null;
+  /** Web only: the debt repayment pattern that put this line in Debt payments (transfers.ts), when one did. */
+  matchedDebt?: KnownDebt | null;
   /** The household already holds a row with this id: importing again changes nothing. */
   alreadyImported: boolean;
   /** A category this line needs written first: new, or existing and widened to both kinds. */
@@ -66,8 +68,10 @@ export interface ProposeInput {
   /**
    * Web only: after the rules and the file, before the known merchants, lines
    * that plainly move money between the household's own accounts (a transfer
-   * between accounts, a card bill payment, a loan payment) become transfers
-   * (transfers.ts), to an account of that name, made when there is none.
+   * between accounts, a card bill payment) become transfers (transfers.ts),
+   * to an account of that name, made when there is none; and repayments of a
+   * loan, a line of credit or a buy-now-pay-later plan go to Debt payments
+   * (fixed spending), when the household has that category.
    */
   knownTransfers?: boolean;
 }
@@ -128,6 +132,7 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
   interface Read {
     line: StatementLine; account: string; rule: CategorizationRule | null; pocket: Account | null; name: string | null;
     merchant: MerchantMatch | null; transfer: { known: KnownTransfer; counterpart: Account } | null;
+    debt: { known: KnownDebt; category: Category } | null;
   }
   const read: Read[] = lines.map((line) => {
     const named = line.account?.trim();
@@ -144,8 +149,11 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
     const known = input.knownTransfers && free ? knownTransfer(line.description, line.amountMinor) : null;
     const counterpart = known ? accountFor(known.counterpart, known.counterpartType) : null;
     const transfer = known && counterpart && counterpart.id !== lineAccount ? { known, counterpart } : null;
-    const merchant = input.knownMerchants && free && !transfer ? knownMerchant(line.description) : null;
-    return { line, account: lineAccount, rule, pocket, name, merchant, transfer };
+    const owed = input.knownTransfers && free && !transfer ? knownDebt(line.description, line.amountMinor) : null;
+    const owedCategory = owed ? debtCategory(categories, owed.kind) : null;
+    const debt = owed && owedCategory ? { known: owed, category: owedCategory } : null;
+    const merchant = input.knownMerchants && free && !transfer && !debt ? knownMerchant(line.description) : null;
+    return { line, account: lineAccount, rule, pocket, name, merchant, transfer, debt };
   });
 
   const kindOf = (r: Read): TransactionKind => {
@@ -208,11 +216,14 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
     const toWrite = category && !categories.some((c) => sameCategory(c, category)) ? category : null;
     const payer = (line.payer ? members.get(normalizeName(line.payer))?.id : undefined) ?? input.payerMemberId;
     const ruled = r.rule?.action.category_id ?? null;
-    const known = !ruled && !category && r.merchant && kind !== "transfer" ? merchantCategory(categories, r.merchant, kind) : null;
-    const chosen = ruled ?? category?.id ?? known?.id ?? null;
-    const source: CategorySource | null = kind === "transfer" ? null : ruled ? "rule" : category ? "file" : known ? "merchant" : "fallback";
+    const owed = !ruled && !category && r.debt && kind === "expense" ? r.debt.category : null;
+    const known = !ruled && !category && !owed && r.merchant && kind !== "transfer" ? merchantCategory(categories, r.merchant, kind) : null;
+    const chosen = ruled ?? category?.id ?? owed?.id ?? known?.id ?? null;
+    const source: CategorySource | null =
+      kind === "transfer" ? null : ruled ? "rule" : category ? "file" : owed ? "debt" : known ? "merchant" : "fallback";
     const chosenCategory = chosen ? (categories.find((c) => c.id === chosen) ?? category) : null;
-    const fixedByDefault = line.fixed == null && kind !== "transfer" && (!!chosenCategory?.fixed || (!!known && !!r.merchant?.merchant.fixed));
+    const fixedByDefault = line.fixed == null && kind !== "transfer" &&
+      (!!owed || !!chosenCategory?.fixed || (!!known && !!r.merchant?.merchant.fixed));
     const base: Transaction = {
       id, kind, date: line.date, amount_minor: amount, category_id: null, account_id: null, to_account_id: null,
       paid_by_member_id: null, to_member_id: null, split: null,
@@ -242,7 +253,7 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
     const used = new Set([tx.account_id, tx.to_account_id].filter(Boolean));
     return {
       transaction: tx, line, matchedRule: r.rule, source, matchedMerchant: source === "merchant" ? r.merchant : null,
-      matchedTransfer: r.transfer?.known ?? null, alreadyImported: input.existingIds.has(id), newCategory: toWrite,
+      matchedTransfer: r.transfer?.known ?? null, matchedDebt: source === "debt" ? r.debt?.known ?? null : null, alreadyImported: input.existingIds.has(id), newCategory: toWrite,
       newAccounts: [...newAccounts.values()].filter((a) => used.has(a.id)),
     };
   });

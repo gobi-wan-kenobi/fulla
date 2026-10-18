@@ -400,6 +400,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
             const parts = [
               by("rule") && `${by("rule")} by your rules`,
               moved && `${moved} transfers (not spending)`,
+              by("debt") && `${by("debt")} debt payments`,
               by("merchant") && `${by("merchant")} known shops`,
               modelled && `${modelled} by the categorizer`,
               by("fallback") - modelled > 0 && `${by("fallback") - modelled} to Other`,
@@ -449,6 +450,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
                       {!overrides[t.id] && !p.alreadyImported && (
                         p.source === "rule" && p.matchedRule ? <span data-testid="by-rule">· by rule “{p.matchedRule.pattern}”</span>
                           : p.source === "merchant" ? <span data-testid="by-merchant">· known shop</span>
+                          : p.source === "debt" ? <span data-testid="by-debt">· debt payment</span>
                             : modelMove ? <span data-testid="by-model">· transfer, by categorizer</span>
                               : guess ? <span data-testid="by-model">· by categorizer</span> : null
                       )}

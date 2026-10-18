@@ -276,7 +276,14 @@ test('rows are never deleted, not even by the database owner', (ctx) => {
 test('a new household has its owner, the default categories and two accounts, and no people or amounts', (ctx) => {
   const cfg = ctx.config();
   const defaults = JSON.parse(fs.readFileSync(path.join(ROOT, 'testdata/defaults/categories.json'), 'utf8'));
-  assert.deepEqual(cfg.categories.map((c) => c.name), defaults.categories.map((c) => c.name.en));
+  const web = JSON.parse(fs.readFileSync(path.join(ROOT, 'testdata/defaults/web-categories.json'), 'utf8'));
+  const top = cfg.categories.filter((c) => c.parent_id === null).sort((a, b) => a.sort - b.sort);
+  assert.deepEqual(top.map((c) => c.name), [...defaults.categories, ...web.categories].map((c) => c.name.en));
+  const debt = top.find((c) => c.name === 'Debt payments');
+  assert.equal(debt.fixed, true);
+  const subs = cfg.categories.filter((c) => c.parent_id === debt.id).sort((a, b) => a.sort - b.sort);
+  assert.deepEqual(subs.map((c) => c.name), web.categories[0].subcategories.map((s) => s.name.en));
+  assert.ok(subs.every((c) => c.fixed && c.applies_to === 'expense'));
   assert.deepEqual(cfg.accounts.map((a) => a.name), defaults.accounts.map((a) => a.name.en));
   assert.equal(cfg.members.length, 1);
   assert.equal(cfg.members[0].role, 'owner');
@@ -292,12 +299,20 @@ rawTest('a household created in Spanish gets its defaults in Spanish', ({ db }) 
     p_name: 'Casa', p_currency: 'EUR', p_locale: 'es-ES', p_display_name: 'Carol', p_initials: 'C',
   });
   const defaults = JSON.parse(fs.readFileSync(path.join(ROOT, 'testdata/defaults/categories.json'), 'utf8'));
-  assert.deepEqual(r.config.categories.map((c) => c.name), defaults.categories.map((c) => c.name.es));
+  const web = JSON.parse(fs.readFileSync(path.join(ROOT, 'testdata/defaults/web-categories.json'), 'utf8'));
+  const top = r.config.categories.filter((c) => c.parent_id === null).sort((a, b) => a.sort - b.sort);
+  assert.deepEqual(top.map((c) => c.name), [...defaults.categories, ...web.categories].map((c) => c.name.es));
 });
 
 rawTest('the defaults embedded in SQL are exactly testdata/defaults/categories.json', ({ db }) => {
   const sql = JSON.parse(db.admin('select fulla.defaults()::text;').out);
   const file = JSON.parse(fs.readFileSync(path.join(ROOT, 'testdata/defaults/categories.json'), 'utf8'));
+  assert.deepEqual(sql, file);
+});
+
+rawTest('the web defaults embedded in SQL are exactly testdata/defaults/web-categories.json', ({ db }) => {
+  const sql = JSON.parse(db.admin('select fulla.web_defaults()::text;').out);
+  const file = JSON.parse(fs.readFileSync(path.join(ROOT, 'testdata/defaults/web-categories.json'), 'utf8'));
   assert.deepEqual(sql, file);
 });
 

@@ -7,8 +7,9 @@ import { accountIdFor, propose, type ProposeInput } from "@/lib/importers";
 import { monthSpendingSplit, monthTotals } from "@/lib/ledger";
 import type { StatementLine } from "@/lib/importers";
 import type { LocalRow } from "@/lib/sync";
-import { BANK_ACCOUNT, CREDIT_CARD, LOAN, OTHER_ACCOUNT, isConsumerLender, knownTransfer } from "@/lib/transfers";
-import { ALICE, HOUSEHOLD, LEISURE, MAIN, SALARY, config } from "./support";
+import { BANK_ACCOUNT, CREDIT_CARD, OTHER_ACCOUNT, isConsumerLender, knownDebt, knownTransfer } from "@/lib/transfers";
+
+import { ALICE, HOUSEHOLD, LEISURE, MAIN, SALARY, category, config } from "./support";
 
 describe("known transfers", () => {
   it.each([
@@ -26,9 +27,6 @@ describe("known transfers", () => {
     ["CREDIT CARD PAYMENT", -15000, CREDIT_CARD, "out", "card-payment"],
     ["PAYMENT - THANK YOU", 15000, BANK_ACCOUNT, "in", "card-payment"],
     ["PAIEMENT - MERCI", 15000, BANK_ACCOUNT, "in", "card-payment"],
-    ["Pre-authorized Debit to SAMPLE AUTO LOAN", -32000, "SAMPLE AUTO LOAN", "out", "loan"],
-    ["PAD EXAMPLE BANK LINE OF CREDIT", -5000, LOAN, "out", "loan"],
-    ["Pre-authorized Debit to NSLSC", -12000, "NSLSC", "out", "loan"],
   ])("%s → %s", (text, amount, counterpart, direction, reason) => {
     expect(knownTransfer(text, amount)).toMatchObject({ counterpart, direction, reason });
   });
@@ -36,7 +34,10 @@ describe("known transfers", () => {
   it.each([
     ["Interac e-Transfer® Out to Example Friend", -5000], // to a person: spending
     ["Interac e-Transfer® In from Example Friend", 5000],
-    ["Pre-authorized Debit to AFFIRM INC", -4970], // buy now, pay later: the household decides
+    ["Pre-authorized Debit to AFFIRM INC", -4970], // buy now, pay later: Debt payments, spending
+    ["Pre-authorized Debit to SAMPLE AUTO LOAN", -32000], // loans too
+    ["PAD EXAMPLE BANK LINE OF CREDIT", -5000],
+    ["Pre-authorized Debit to NSLSC", -12000],
     ["Pre-authorized Debit to easyfinancial", -27500],
     ["KLARNA LOAN PAYMENT", -2000],
     ["Pre-authorized Debit to EXAMPLE MORTGAGE", -180000], // housing, not a transfer
@@ -51,9 +52,39 @@ describe("known transfers", () => {
     expect(knownTransfer(text, amount)).toBeNull();
   });
 
-  it("knows the consumer lenders it leaves alone", () => {
-    for (const t of ["AFFIRM INC", "easyfinancial", "Easy Financial Services", "AFTERPAY", "PayBright", "SEZZLE", "goPeer LP-0000"]) expect(isConsumerLender(t)).toBe(true);
+  it("knows the consumer lenders", () => {
+    for (const t of ["AFFIRM INC", "easyfinancial", "Easy Financial Services", "AFTERPAY", "PayBright", "SEZZLE", "goPeer LP-0000", "UEI Financial", "MOGO"]) expect(isConsumerLender(t)).toBe(true);
     expect(isConsumerLender("EXAMPLE CREDIT UNION")).toBe(false);
+  });
+});
+
+describe("debt payments", () => {
+  it.each([
+    ["Pre-authorized Debit to AFFIRM INC", "bnpl"],
+    ["KLARNA LOAN PAYMENT", "bnpl"],
+    ["Pre-authorized Debit to easyfinancial", "personal_loan"],
+    ["Pre-authorized Debit to goPeer LP-0000", "personal_loan"],
+    ["Pre-authorized Debit to UEI Financial", "personal_loan"],
+    ["MOGO FINANCE PAD", "personal_loan"],
+    ["PAD EXAMPLE BANK LINE OF CREDIT", "line_of_credit"],
+    ["Pre-authorized Debit to NSLSC", "student_loan"],
+    ["OSAP REPAYMENT", "student_loan"],
+    ["Pre-authorized Debit to SAMPLE AUTO LOAN", "car_loan"],
+    ["EXAMPLE TOYOTA FINANCIAL PAD", "car_loan"],
+    ["EXAMPLE BANK LOAN PAYMENT", "other_debt"],
+  ])("%s → %s", (text, kind) => {
+    expect(knownDebt(text, -10000)).toEqual({ kind });
+  });
+
+  it.each([
+    ["Pre-authorized Debit to EXAMPLE MORTGAGE", -180000],
+    ["EXAMPLE MTG LOAN PAYMENT", -180000],
+    ["Online bill payment for NORTHWIND MASTERCARD, account ••••0000", -20000],
+    ["Interac e-Transfer® Out to Example Friend", -5000],
+    ["Example Coffee", -450],
+    ["AFFIRM REFUND", 4970], // money in is never a repayment
+  ])("%s is not one", (text, amount) => {
+    expect(knownDebt(text, amount)).toBeNull();
   });
 });
 
@@ -74,11 +105,21 @@ describe("transfers in an import", () => {
     { date: "2030-01-05", amountMinor: -4970, description: "Pre-authorized Debit to AFFIRM INC" },
     { date: "2030-01-06", amountMinor: -5000, description: "Transfer out to Cash" },
     { date: "2030-01-07", amountMinor: -650, description: "Example Coffee" },
+    { date: "2030-01-08", amountMinor: -32000, description: "Pre-authorized Debit to SAMPLE AUTO LOAN" },
+  ];
+  const DEBT = "00000000-0000-4000-8000-000000000301";
+  const BNPL = "00000000-0000-4000-8000-000000000302";
+  const CAR = "00000000-0000-4000-8000-000000000303";
+  const withDebt = [
+    ...config.categories,
+    category(DEBT, "Debt payments", "expense", { fixed: true }),
+    category(BNPL, "Buy now pay later", "expense", { parent_id: DEBT, fixed: true }),
+    category(CAR, "Car loan", "expense", { parent_id: DEBT, fixed: true }),
   ];
 
   it("become transfers between the account and one named for the other end, made once", () => {
     const p = plan(lines);
-    expect(p.map((x) => x.transaction.kind)).toEqual(["transfer", "transfer", "transfer", "expense", "transfer", "expense"]);
+    expect(p.map((x) => x.transaction.kind)).toEqual(["transfer", "transfer", "transfer", "expense", "transfer", "expense", "expense"]);
     const fund = accountIdFor(HOUSEHOLD, "Holiday Fund");
     expect(p[0].transaction).toMatchObject({ account_id: MAIN, to_account_id: fund, category_id: null, paid_by_member_id: null, split: null, recurrence: "variable" });
     expect(p[1].transaction).toMatchObject({ account_id: fund, to_account_id: MAIN });
@@ -87,10 +128,23 @@ describe("transfers in an import", () => {
     expect(p[4].transaction.to_account_id).toBe(config.accounts.find((a) => a.name === "Cash")!.id);
     expect(p[0].source).toBeNull();
     expect(p[0].matchedTransfer).toMatchObject({ counterpart: "Holiday Fund", reason: "own-account" });
-    // The consumer lender is left as spending, to Other.
+    // Without a Debt payments category, a repayment is spending in the catch-all.
     expect(p[3].transaction).toMatchObject({ kind: "expense", category_id: LEISURE });
+    expect(p[6].transaction).toMatchObject({ kind: "expense", category_id: LEISURE });
     const made = new Map(p.flatMap((x) => x.newAccounts).map((a) => [a.id, a]));
     expect([...made.values()].map((a) => [a.name, a.type]).sort()).toEqual([["Holiday Fund", "other"], ["NORTHWIND MASTERCARD", "credit_card"]]);
+  });
+
+  it("repayments go to Debt payments, its subcategory when there is one, as fixed spending", () => {
+    const p = plan(lines, { names: { categories: withDebt, members: config.members, accounts: config.accounts } });
+    expect(p[3].transaction).toMatchObject({ kind: "expense", category_id: BNPL, recurrence: "fixed" });
+    expect(p[3].source).toBe("debt");
+    expect(p[3].matchedDebt).toEqual({ kind: "bnpl" });
+    expect(p[6].transaction).toMatchObject({ kind: "expense", category_id: CAR, recurrence: "fixed" });
+    expect(p[2].transaction.kind).toBe("transfer"); // a card bill stays a transfer
+    const rows: LocalRow[] = p.map((x) => ({ tx: x.transaction, state: "synced", base: null }));
+    expect(monthTotals(rows, "2030-01").spentMinor).toBe(4970 + 650 + 32000);
+    expect(monthSpendingSplit(rows, "2030-01").fixedMinor).toBe(4970 + 32000);
   });
 
   it("keep the same ids, so a file imported before is still recognised", () => {
@@ -106,22 +160,26 @@ describe("transfers in an import", () => {
 
   it("stay out of spending, income and fixed/flexible, while still in the list", () => {
     const rows: LocalRow[] = plan(lines).map((x) => ({ tx: x.transaction, state: "synced", base: null }));
-    expect(monthTotals(rows, "2030-01")).toEqual({ spentMinor: 4970 + 650, incomeMinor: 0 });
+    expect(monthTotals(rows, "2030-01")).toEqual({ spentMinor: 4970 + 650 + 32000, incomeMinor: 0 });
     const split = monthSpendingSplit(rows, "2030-01");
-    expect(split.fixedMinor + split.flexibleMinor).toBe(4970 + 650);
+    expect(split.fixedMinor + split.flexibleMinor).toBe(4970 + 650 + 32000);
     expect(rows.filter((r) => r.tx.kind === "transfer")).toHaveLength(4);
   });
 });
 
 describe("the model's transfers", () => {
   const a = (parent: string, subcategory: string | null = null) => ({ parent, subcategory, spending: null });
-  it("Transfers, Savings & Investing, and card or loan Debt Payments are transfers", () => {
+  it("Transfers, Savings & Investing, and card-bill Debt Payments are transfers", () => {
     expect(modelTransfer(a("Transfers", "Account Transfer"), "EXAMPLE XFER 0001", "expense")).toEqual({ counterpart: OTHER_ACCOUNT, counterpartType: "other", direction: "out" });
     expect(modelTransfer(a("Transfers"), "EXAMPLE XFER 0001", "income")?.direction).toBe("in");
     expect(modelTransfer(a("Savings & Investing", "Brokerage"), "EXAMPLE INVEST", "expense")?.counterpart).toBe(OTHER_ACCOUNT);
     expect(modelTransfer(a("Debt Payments", "Credit Card Payment"), "EXAMPLE CARD CO", "expense")).toMatchObject({ counterpart: CREDIT_CARD, counterpartType: "credit_card" });
-    expect(modelTransfer(a("Debt Payments", "Personal Loan"), "EXAMPLE LENDING", "expense")?.counterpart).toBe(LOAN);
-    expect(modelTransfer(a("Debt Payments", "Student Loan"), "EXAMPLE LENDING", "expense")?.counterpart).toBe(LOAN);
+    expect(modelTransfer(a("Debt Payments", "Credit-Card"), "Online bill payment for EXAMPLE CARD", "expense")?.counterpartType).toBe("credit_card");
+  });
+
+  it("loan Debt Payments are spending, not transfers", () => {
+    expect(modelTransfer(a("Debt Payments", "Personal Loan"), "EXAMPLE LENDING", "expense")).toBeNull();
+    expect(modelTransfer(a("Debt Payments", "Student Loan"), "EXAMPLE LENDING", "expense")).toBeNull();
   });
 
   it("but never money to a person, a consumer lender, a mortgage or plain spending", () => {

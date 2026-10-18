@@ -221,7 +221,7 @@ export function EntryScreen({ config, existing, onSave, onDelete, onClose, onCon
           </label>
           {suggested && !picked && (
             <p className="t-secondary text-ink-muted -mt-2" data-testid="suggested">
-              {suggested.category.name}, {suggested.source === "rule" ? `by your rule “${suggested.rule?.pattern}”` : "a shop Fulla knows"}
+              {suggested.category.name}, {suggested.source === "rule" ? `by your rule “${suggested.rule?.pattern}”` : suggested.source === "debt" ? "a debt repayment" : "a shop Fulla knows"}
             </p>
           )}
           {canRemember && (

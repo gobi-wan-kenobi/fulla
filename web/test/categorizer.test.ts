@@ -237,3 +237,24 @@ describe("POST /api/categorize (mocked network)", () => {
     expect(body.results.t1.parent).toBe("Dining & Take-out");
   });
 });
+
+describe("Debt Payments answers", () => {
+  const debt = cats.find((c) => c.name === "Debt payments")!;
+  const sub = (id: string, name: string): Category => ({ id, name, applies_to: "expense", parent_id: debt.id, icon: "account_balance", color_index: 0, sort: 0, archived: false, fixed: true });
+  const withSubs = [...cats, sub("d1", "Personal loan"), sub("d2", "Line of credit"), sub("d3", "Buy now pay later"), sub("d4", "Student loan"), sub("d5", "Car loan"), sub("d6", "Other debt")];
+  const ans = (subcategory: string) => ({ parent: "Debt Payments", subcategory, spending: null });
+  it.each([
+    ["Personal Loan", "EXAMPLE LENDING", "Personal loan"],
+    ["Personal Loan", "Pre-authorized Debit to AFFIRM INC", "Buy now pay later"], // the description says which
+    ["Personal Loan", "EXAMPLE LINE OF CREDIT PMT", "Line of credit"],
+    ["Student Loan", "EXAMPLE", "Student loan"],
+    ["Auto Loan", "EXAMPLE", "Car loan"],
+    ["Something Else", "EXAMPLE", "Other debt"],
+  ])("%s, %s → %s", (s, description, name) => {
+    expect(modelCategory(withSubs, ans(s), "expense", description)?.name).toBe(name);
+  });
+  it("go to Debt payments itself when it has no subcategories, and a mortgage to Housing", () => {
+    expect(modelCategory(cats, ans("Personal Loan"), "expense")?.name).toBe("Debt payments");
+    expect(modelCategory(cats, ans("Mortgage"), "expense")?.name).toBe("Housing");
+  });
+});

@@ -10,9 +10,10 @@
  * Only category names are in this file: the mapping from the model's
  * taxonomy to Fulla's starting categories.
  */
-import { categoryForKey, isCatchAll } from "./categorize";
+import { categoryForKey, debtCategory, isCatchAll } from "./categorize";
+import type { DebtKind } from "./defaults";
 import { allows, type Account, type Category, type TransactionKind } from "./model";
-import { CREDIT_CARD, LOAN, OTHER_ACCOUNT, isConsumerLender, isPersonToPerson } from "./transfers";
+import { CREDIT_CARD, OTHER_ACCOUNT, isPersonToPerson, knownDebt } from "./transfers";
 
 export const DEFAULT_CATEGORIZER_MODEL = "ft:gpt-4.1-2025-04-14:personal:transaction-processor:Bb3M10Qu";
 
@@ -35,6 +36,12 @@ export interface ModelAnswer {
   subcategory: string | null;
   /** What the model says; kept for reference only. Whether spending is fixed is the category's flag. */
   spending: "fixed" | "flexible" | null;
+  /** Jev only: how sure it is of the parent (flat.confidence), 0 to 1. */
+  confidence?: number | null;
+  /** Jev only: below the cutoff, so the line is not filed but sent to review (Other, tagged needs-review). */
+  review?: boolean;
+  /** Which categorizer answered. */
+  by?: "jev" | "openai" | "local";
 }
 
 // Hyphens the model writes that are not "-": soft hyphen, the U+2010–U+2015 hyphens and dashes,
@@ -85,7 +92,7 @@ const PARENTS: Record<string, string | null> = {
   "entertainment & recreation": "leisure",
   "shopping": "shopping",
   "transportation": "transport",
-  "debt payments": "other",
+  "debt payments": "debt_payments",
   "utilities": "utilities",
   "personal care": "health",
   "savings & investing": null,
@@ -113,6 +120,19 @@ const SUBCATEGORIES: Record<string, string> = {
   "rideshare/taxi (commute)": "transport",
   "gym membership": "health",
 };
+
+/** A Debt payments subcategory label from the model as one of Fulla's kinds of debt; the description wins when it says. */
+export function debtKind(subcategory: string | null, description = ""): DebtKind {
+  const said = knownDebt(description, -1);
+  if (said && said.kind !== "other_debt") return said.kind;
+  const s = key(subcategory ?? "");
+  if (/line of credit|\bloc\b|heloc/.test(s)) return "line_of_credit";
+  if (/bnpl|buy now|pay later|instal?lment plan/.test(s)) return "bnpl";
+  if (/student/.test(s)) return "student_loan";
+  if (/\b(auto|car|vehicle)\b/.test(s)) return "car_loan";
+  if (/personal|loan/.test(s)) return "personal_loan";
+  return said?.kind ?? "other_debt";
+}
 
 /** Fulla's starting category key for an answer, or null when it names none. */
 export function modelKey(answer: ModelAnswer, kind: TransactionKind): string | null {
@@ -151,9 +171,13 @@ export function nameMatch(a: string, b: string): number {
  * household has a subcategory of it (or a category of its own) whose name is
  * the model's subcategory, loosely ("Rent" → "Rent / Mortgage"), that one.
  */
-export function modelCategory(categories: Category[], answer: ModelAnswer, kind: TransactionKind): Category | null {
+export function modelCategory(categories: Category[], answer: ModelAnswer, kind: TransactionKind, description = ""): Category | null {
   const k = modelKey(answer, kind);
   if (!k) return null;
+  if (k === "debt_payments") {
+    if (/mortgage/.test(key(answer.subcategory ?? ""))) return categoryForKey(categories, "housing", kind);
+    return debtCategory(categories, debtKind(answer.subcategory, description)) ?? categoryForKey(categories, "other", kind);
+  }
   const base = categoryForKey(categories, k, kind);
   const sub = answer.subcategory;
   if (!sub) return base;
@@ -187,23 +211,24 @@ export interface ModelTransfer {
 /**
  * When the model's answer means a transfer rather than spending: its
  * Transfers and Savings & Investing, and a Debt Payment that is a credit card
- * or a loan. Never for money to or from a person (an Interac e-Transfer may
- * be spending), nor for buy-now-pay-later and consumer lenders (the
- * household decides those), as transfers.ts. Null: map it to a category.
+ * bill (the spending is on the card's own statement). Never for money to or
+ * from a person (an Interac e-Transfer may be spending), and never for a loan,
+ * a line of credit or a buy-now-pay-later plan: those are Debt payments,
+ * spending. Null: map it to a category.
  */
 export function modelTransfer(answer: ModelAnswer, description: string, kind: TransactionKind): ModelTransfer | null {
   if (kind !== "expense" && kind !== "income") return null;
-  if (isPersonToPerson(description) || isConsumerLender(description)) return null;
+  if (isPersonToPerson(description) || knownDebt(description, -1)) return null;
   const direction = kind === "expense" ? "out" : "in";
   const parent = key(answer.parent);
   const sub = key(answer.subcategory ?? "");
-  if (parent === "transfers") return { counterpart: OTHER_ACCOUNT, counterpartType: "other", direction };
+  if (parent === "transfers") {
+    if (/credit ?-?card/.test(sub)) return { counterpart: CREDIT_CARD, counterpartType: "credit_card", direction };
+    return { counterpart: OTHER_ACCOUNT, counterpartType: "other", direction };
+  }
   if (parent === "savings & investing") return { counterpart: OTHER_ACCOUNT, counterpartType: "other", direction };
-  if (parent === "debt payments" && kind === "expense") {
-    if (/credit ?card/.test(sub)) return { counterpart: CREDIT_CARD, counterpartType: "credit_card", direction };
-    if (/\b(loan|loans|line of credit|student|auto|car|vehicle)\b/.test(sub) && !/mortgage/.test(sub)) {
-      return { counterpart: LOAN, counterpartType: "other", direction };
-    }
+  if (parent === "debt payments" && kind === "expense" && /credit ?-?card/.test(sub)) {
+    return { counterpart: CREDIT_CARD, counterpartType: "credit_card", direction };
   }
   return null;
 }

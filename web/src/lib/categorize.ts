@@ -3,20 +3,24 @@
  * Which category a transaction gets when nobody chose one, in this order:
  *
  *  1. the household's own rules (categorization_rules, first active one by sort);
- *  2. the built-in list of known merchants (merchants.ts);
- *  3. the optional categorizer model, asked by the server (categorizer.ts);
- *  4. Other / Other income.
+ *  2. built-in statement patterns: own-account and card-bill transfers, and
+ *     debt repayments into Debt payments (transfers.ts);
+ *  3. the built-in list of known merchants (merchants.ts);
+ *  4. the categorizer, asked by the server (categorizer.ts, server/categorizer.ts),
+ *     which sends what it is unsure of to review;
+ *  5. Other / Other income.
  *
  * Everything here is pure, so the import, the entry screen and "apply rules
  * to what is already there" reach the same answer about the same text.
  */
-import { UNCATEGORIZED } from "./defaults";
+import { DEBT_KEY, type DebtKind, UNCATEGORIZED, WEB_DEFAULT_CATEGORIES } from "./defaults";
 import { defaultKeys } from "./importers/hints";
 import { KNOWN_MERCHANTS, type KnownMerchant } from "./merchants";
 import { allows, type CategorizationRule, type Category, type TransactionKind } from "./model";
 import { normalizeName } from "./text";
+import { knownDebt } from "./transfers";
 
-export type CategorySource = "rule" | "file" | "merchant" | "model" | "fallback";
+export type CategorySource = "rule" | "file" | "merchant" | "debt" | "model" | "fallback";
 
 /** A statement's text as words: no accents, lower case, punctuation as spaces (apostrophes dropped). */
 export function words(s: string): string {
@@ -95,6 +99,22 @@ export function categoryForKey(categories: Category[], key: string, kind: Transa
   return live.find((c) => c.parent_id === null && named(c)) ?? live.find(named) ?? null;
 }
 
+const DEBT_SUBS = WEB_DEFAULT_CATEGORIES.find((d) => d.key === DEBT_KEY)?.subcategories ?? [];
+
+/**
+ * The household's Debt payments category for a kind of debt: its subcategory
+ * for that kind (by any of the default's names) when it has one, else Debt
+ * payments itself; null when the household has no Debt payments.
+ */
+export function debtCategory(categories: Category[], kind: DebtKind | null): Category | null {
+  const parent = categoryForKey(categories, DEBT_KEY, "expense");
+  if (!parent) return null;
+  const sub = kind ? DEBT_SUBS.find((d) => d.key === kind) : undefined;
+  if (!sub) return parent;
+  const names = new Set(Object.values(sub.name).map(normalizeName));
+  return categories.find((c) => !c.archived && c.parent_id === parent.id && names.has(normalizeName(c.name))) ?? parent;
+}
+
 export const OTHER_KEY = "other";
 export const OTHER_INCOME_KEY = "other_income";
 
@@ -142,6 +162,9 @@ export function suggest(description: string, kind: TransactionKind, rules: Categ
   const rule = matchRule(rules, description);
   const ruled = rule?.action.category_id ? categories.find((c) => c.id === rule.action.category_id && !c.archived) : undefined;
   if (rule && ruled && allows(ruled.applies_to, kind)) return { category: ruled, source: "rule", rule, fixed: !!ruled.fixed };
+  const debt = kind === "expense" ? knownDebt(description, -1) : null;
+  const owed = debt ? debtCategory(categories, debt.kind) : null;
+  if (owed) return { category: owed, source: "debt", fixed: true };
   const match = knownMerchant(description);
   if (match) {
     const c = merchantCategory(categories, match, kind);

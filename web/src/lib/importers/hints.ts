@@ -17,6 +17,7 @@ const SYNONYMS: Record<string, string[]> = {
   gifts: ["regalo", "gift", "cadeau", "geschenk", "regalo", "presente"],
   other: ["otros", "otro", "varios", "others", "misc", "autres", "altro", "altri", "outros"],
   salary: ["nomina", "sueldo", "payroll", "paycheck", "wages", "paie", "lohn", "busta paga", "ordenado"],
+  debt_payments: ["debt", "debts", "debt payment", "loans", "loan payments", "deudas", "dettes", "schulden", "debiti", "dividas"],
   other_income: ["otros", "varios", "others", "autres", "sonstige", "altri", "outros"],
 };
 
