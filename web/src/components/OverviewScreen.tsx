@@ -38,7 +38,7 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
   }, [config.household.id, given]);
   const snapshots = given ?? fetched;
 
-  const view = useMemo(() => overview(rows, config.categories, month, today()), [rows, config.categories, month]);
+  const view = useMemo(() => overview(rows, config.categories, month, today(), config.accounts), [rows, config.categories, config.accounts, month]);
   const held = useMemo(() => holdings(rows, config.accounts, snapshots, today()), [rows, config.accounts, snapshots]);
   const f = view.figures;
   const money = (n: number, signed = false) => formatMoney(n, currency, locale, signed);

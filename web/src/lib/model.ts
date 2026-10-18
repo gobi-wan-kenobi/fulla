@@ -110,10 +110,23 @@ export interface Category {
   excluded_from_income?: boolean;
 }
 
-/** Ids of the categories whose money in is not counted as the household's income. */
-export function outsideIncome(categories: Category[]): Set<string> {
-  return new Set(categories.filter((c) => c.excluded_from_income).map((c) => c.id));
+/** Money in that is not the household's income, by its row; see outsideIncome. */
+export type OutsideIncome = (t: Pick<Transaction, "kind" | "category_id" | "account_id">) => boolean;
+
+/**
+ * Which money in is not the household's income: anything that stays inside an
+ * investment account (its dividends, interest and grants are the account's,
+ * and show in net worth), and anything in a category left out of income
+ * (Government grants, 0030). Dividends or interest paid into chequing or
+ * savings are income as usual.
+ */
+export function outsideIncome(categories: Category[], accounts: Pick<Account, "id" | "type">[] = []): OutsideIncome {
+  const excluded = new Set(categories.filter((c) => c.excluded_from_income).map((c) => c.id));
+  const investment = new Set(accounts.filter((a) => a.type === "investment").map((a) => a.id));
+  return (t) => t.kind === "income" && ((!!t.category_id && excluded.has(t.category_id)) || (!!t.account_id && investment.has(t.account_id)));
 }
+/** Everything that comes in is income. */
+export const nothingOutside: OutsideIncome = () => false;
 
 export interface CategorizationRule {
   id: string;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // What screens draw, worked out here and tested, so screens do no arithmetic on money (AGENTS.md).
 import { randomId } from "./ids";
-import { activeMembers, allows, countsInTotals, type Category, type Config, type Transaction, type TransactionKind } from "./model";
+import { activeMembers, allows, countsInTotals, nothingOutside, type Category, type Config, type OutsideIncome, type Transaction, type TransactionKind } from "./model";
 import type { LocalRow } from "./sync";
 
 /** Today in the browser's own zone, as YYYY-MM-DD. */
@@ -37,15 +37,15 @@ export interface MonthTotals {
   incomeMinor: number;
 }
 
-/** Spent (expenses less refunds) and income in one calendar month; income in `excluded` categories (outsideIncome) is not counted. */
-export function monthTotals(rows: LocalRow[], month: string, excluded: Set<string> = new Set()): MonthTotals {
+/** Spent (expenses less refunds) and income in one calendar month; money in that is not the household's income (outsideIncome) is not counted. */
+export function monthTotals(rows: LocalRow[], month: string, outside: OutsideIncome = nothingOutside): MonthTotals {
   let spent = 0;
   let income = 0;
   for (const t of counted(rows)) {
     if (monthOf(t.date) !== month || !countsInTotals(t.kind)) continue;
     if (t.kind === "expense") spent += t.amount_minor;
     else if (t.kind === "refund") spent -= t.amount_minor;
-    else if (t.kind === "income" && !(t.category_id && excluded.has(t.category_id))) income += t.amount_minor;
+    else if (t.kind === "income" && !outside(t)) income += t.amount_minor;
   }
   return { spentMinor: spent, incomeMinor: income };
 }

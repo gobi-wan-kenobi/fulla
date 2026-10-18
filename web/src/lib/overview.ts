@@ -8,14 +8,15 @@
  *  - Spending is expenses less refunds. Transfers and settlements move money
  *    between the household's own accounts and people: never in a total.
  *  - Debt payments are spending (fixed, as their category says).
- *  - Money in a category left out of income (a government grant into an
- *    RESP) is the account's, not the household's: not in the income.
+ *  - Money that stays inside an investment account (dividends, interest,
+ *    grants) and money in a category left out of income is the account's,
+ *    not the household's: not in the income (it shows in net worth).
  *  - Categories roll up to their parent; a parent opens to its subcategories.
  *  - "Usually" is the average of up to three earlier months that have
  *    anything written down.
  */
 import { counted, monthOf, shiftMonth } from "./ledger";
-import { type Account, type Category, type Transaction, outsideIncome } from "./model";
+import { type Account, type Category, type OutsideIncome, type Transaction, nothingOutside, outsideIncome } from "./model";
 import type { LocalRow } from "./sync";
 
 export interface Figures {
@@ -62,13 +63,13 @@ function parentOf(byId: Map<string, Category>, id: string | null): string | null
   return c?.parent_id && byId.has(c.parent_id) ? c.parent_id : id;
 }
 
-export function monthFigures(txs: Transaction[], month: string, excluded: Set<string> = new Set()): Figures {
+export function monthFigures(txs: Transaction[], month: string, outside: OutsideIncome = nothingOutside): Figures {
   let income = 0;
   let fixed = 0;
   let flexible = 0;
   for (const t of txs) {
     if (monthOf(t.date) !== month) continue;
-    if (t.kind === "income" && !(t.category_id && excluded.has(t.category_id))) income += t.amount_minor;
+    if (t.kind === "income" && !outside(t)) income += t.amount_minor;
     const s = spend(t);
     if (t.recurrence === "fixed") fixed += s;
     else flexible += s;
@@ -135,12 +136,12 @@ export function wholePercents(shares: number[]): number[] {
   return out;
 }
 
-export function overview(rows: LocalRow[], categories: Category[], month: string, todayDate: string): Overview {
+export function overview(rows: LocalRow[], categories: Category[], month: string, todayDate: string, accounts: Pick<Account, "id" | "type">[] = []): Overview {
   const txs = counted(rows);
   return {
     month,
     running: month === monthOf(todayDate),
-    figures: monthFigures(txs, month, outsideIncome(categories)),
+    figures: monthFigures(txs, month, outsideIncome(categories, accounts)),
     categories: byCategory(txs, categories, month),
   };
 }

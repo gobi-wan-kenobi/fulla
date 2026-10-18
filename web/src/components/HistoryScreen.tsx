@@ -67,7 +67,7 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh,
     review: rows.filter((r) => needsReview(r.tx)).length,
     unmatched: rows.filter((r) => isUnmatchedTransfer(r.tx)).length,
   }), [rows]);
-  const totals = useMemo(() => monthTotals(rows, month, outsideIncome(config.categories)), [rows, month, config.categories]);
+  const totals = useMemo(() => monthTotals(rows, month, outsideIncome(config.categories, config.accounts)), [rows, month, config.categories, config.accounts]);
   const split = useMemo(() => monthSpendingSplit(rows, month), [rows, month]);
   const chosenRows = rows.filter((r) => selected.has(r.tx.id));
   const bulkKinds = new Set(chosenRows.map((r) => r.tx.kind));

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { grantsCategory } from "@/lib/categorize";
 import { buildImport, dividendsLabel, groupDividends, newAccounts, propose, readWealthsimpleActivityCsv, statementKey, type StatementAccountInfo, type StatementLine } from "@/lib/importers";
 import { monthTotals } from "@/lib/ledger";
-import type { Account, Category, Transaction } from "@/lib/model";
+import { type Account, type Category, type Transaction, outsideIncome } from "@/lib/model";
 import { monthFigures, overview } from "@/lib/overview";
 import type { LocalRow } from "@/lib/sync";
 import { ALICE, HOUSEHOLD, category } from "./support";
@@ -97,6 +97,43 @@ describe("re-importing grouped dividends", () => {
   });
 });
 
+describe("money that stays inside an investment account", () => {
+  const CHEQUING: Account = { ...RESP, id: id(301), name: "Example chequing", type: "checking" };
+  const SAVINGS: Account = { ...RESP, id: id(302), name: "Example savings", type: "savings" };
+  const TFSA: Account = { ...RESP, id: id(331), name: "Example TFSA", type: "investment" };
+  const INTEREST = category(id(907), "Interest", "income");
+  const cats = [...CATEGORIES, INTEREST];
+  const tx = (n: number, amount: number, categoryId: string, accountId: string, kind: Transaction["kind"] = "income"): Transaction => ({
+    id: id(n), kind, date: "2030-03-20", amount_minor: amount, category_id: categoryId, account_id: accountId, to_account_id: null,
+    paid_by_member_id: kind === "income" ? null : ALICE, to_member_id: null, split: null, recurrence: "variable", note: "", tags: [], extras: {}, status: "active",
+    recurring_rule_id: null, occurrence_date: null, import_fingerprint: null, original_currency: null, created_at: "", client_updated_at: "",
+  });
+  const txs = [
+    tx(1, 300000, SALARY.id, CHEQUING.id),
+    tx(2, 1200, INTEREST.id, SAVINGS.id), // interest paid into savings: income
+    tx(3, 300, INVEST.id, CHEQUING.id), // a dividend paid out to chequing: income
+    tx(4, 178, INVEST.id, TFSA.id), // dividends kept in the TFSA: not income
+    tx(5, 6, INTEREST.id, TFSA.id), // interest on the TFSA's cash: not income
+    tx(6, 2000, GRANTS.id, RESP.id), // a grant into the RESP: not income
+    tx(7, 13, INVEST.id, TFSA.id, "refund"), // a fee given back is still less spending
+  ];
+  const rows: LocalRow[] = txs.map((t) => ({ tx: t, state: "synced", base: null }));
+  const accounts = [CHEQUING, SAVINGS, TFSA, RESP];
+
+  it("is left out of the Overview's income and History's month total, by the account's type", () => {
+    expect(overview(rows, cats, "2030-03", "2030-04-01", accounts).figures.incomeMinor).toBe(301500);
+    expect(monthTotals(rows, "2030-03", outsideIncome(cats, accounts)).incomeMinor).toBe(301500);
+    expect(monthTotals(rows, "2030-03", outsideIncome(cats, accounts)).spentMinor).toBe(-13);
+    const outside = outsideIncome(cats, accounts);
+    expect(txs.filter(outside).map((t) => t.id)).toEqual([id(4), id(5), id(6)]);
+  });
+
+  it("counts again once the account is no longer an investment one, the grants category aside", () => {
+    const asOther = accounts.map((a) => (a.id === TFSA.id || a.id === RESP.id ? { ...a, type: "other" as const } : a));
+    expect(overview(rows, cats, "2030-03", "2030-04-01", asOther).figures.incomeMinor).toBe(301500 + 178 + 6);
+  });
+});
+
 describe("government grants", () => {
   it("go to the category left out of income, else Investment income", () => {
     expect(grantsCategory(CATEGORIES)!.id).toBe(GRANTS.id);
@@ -117,6 +154,6 @@ describe("government grants", () => {
     const rows: LocalRow[] = txs.map((t) => ({ tx: t, state: "synced", base: null }));
     expect(overview(rows, CATEGORIES, "2030-03", "2030-04-01").figures.incomeMinor).toBe(300200);
     expect(monthFigures(txs, "2030-03").incomeMinor).toBe(302200); // without the categories, everything counts
-    expect(monthTotals(rows, "2030-03", new Set([GRANTS.id])).incomeMinor).toBe(300200);
+    expect(monthTotals(rows, "2030-03", outsideIncome(CATEGORIES)).incomeMinor).toBe(300200);
   });
 });
