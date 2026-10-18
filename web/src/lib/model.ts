@@ -136,6 +136,20 @@ export function outsideTotals(categories: Category[], accounts: Pick<Account, "i
 /** Every row counts. */
 export const nothingOutside: OutsideTotals = () => false;
 
+/** A category's limit (fulla.budgets): for every month when period is null, else for that YYYY-MM. */
+export interface Budget {
+  id: string;
+  category_id: string;
+  period: string | null;
+  amount_minor: number;
+}
+
+/** What the web reads of a trip (fulla.trips): whether its spending also counts in the category budgets. */
+export interface Trip {
+  id: string;
+  in_category_budgets?: boolean;
+}
+
 export interface CategorizationRule {
   id: string;
   pattern: string;
@@ -162,11 +176,11 @@ export interface Config {
   accounts: Account[];
   categories: Category[];
   custom_fields: unknown[];
-  budgets: unknown[];
+  budgets: Budget[];
   recurring_rules: unknown[];
   categorization_rules: CategorizationRule[];
   import_profiles: SavedImportProfile[];
-  trips?: unknown[];
+  trips?: Trip[];
 }
 
 export function countsInTotals(kind: TransactionKind): boolean {

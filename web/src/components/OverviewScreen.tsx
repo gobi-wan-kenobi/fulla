@@ -8,6 +8,8 @@ import type { Config } from "@/lib/model";
 import { formatMoney } from "@/lib/money";
 import { type BalanceSnapshot, holdings, overview, wholePercents } from "@/lib/overview";
 import type { LocalRow } from "@/lib/sync";
+import { BudgetBar, ProgressLine } from "./BudgetBar";
+import { HeroJar } from "./HeroJar";
 import { Icon } from "./Icon";
 import { EmptyState, ScreenHeader, Section, categoryColor } from "./Pieces";
 
@@ -38,7 +40,10 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
   }, [config.household.id, given]);
   const snapshots = given ?? fetched;
 
-  const view = useMemo(() => overview(rows, config.categories, month, today(), config.accounts), [rows, config.categories, config.accounts, month]);
+  const view = useMemo(
+    () => overview(rows, config.categories, month, today(), config.accounts, { budgets: config.budgets, trips: config.trips }),
+    [rows, config.categories, config.accounts, config.budgets, config.trips, month],
+  );
   const held = useMemo(() => holdings(rows, config.accounts, snapshots, today()), [rows, config.accounts, snapshots]);
   const f = view.figures;
   const money = (n: number, signed = false) => formatMoney(n, currency, locale, signed);
@@ -58,9 +63,9 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
         </button>
       </div>
 
-      <div className="px-5 pt-4 pb-2 text-center" data-testid="overview-left">
-        <div className="t-label text-ink-muted uppercase">{view.running ? "Left so far" : f.leftMinor < 0 ? "Overspent" : "Saved"}</div>
-        <div className={`t-hero ${f.leftMinor < 0 ? "text-danger" : "text-ink"}`}>{money(f.leftMinor)}</div>
+      <div data-testid="overview-left">
+        <HeroJar hero={view.hero} money={(n) => money(n)}
+          description={`${monthLabel(month, locale)}: ${money(f.incomeMinor)} in, ${money(f.spentMinor)} out, ${money(f.leftMinor)} ${view.running ? "left so far" : f.leftMinor < 0 ? "overspent" : "saved"}.`} />
       </div>
 
       <div className="grid grid-cols-3 gap-2 px-5 py-3" data-testid="overview-figures">
@@ -82,6 +87,8 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
           Fixed {money(f.fixedMinor)} · Flexible {money(f.flexibleMinor)} · transfers between your accounts are not counted
         </p>
       )}
+
+      <BudgetBar status={view.budget} money={(n) => money(n)} />
 
       {held && (
         <div className="flex items-center gap-4 px-5 py-3 mt-3 border-y border-line" data-testid="overview-holdings">
@@ -108,7 +115,7 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
             const context = [
               `${percents[i]} %`,
               row.fixedMinor !== 0 && row.flexibleMinor !== 0 ? `fixed ${money(row.fixedMinor)}` : row.fixedMinor !== 0 ? "fixed" : null,
-              row.usualMinor > 0 ? `usually ${money(row.usualMinor)}` : null,
+              row.budget ? `of ${money(row.budget.limitMinor)}` : row.usualMinor > 0 ? `usually ${money(row.usualMinor)}` : null,
             ].filter(Boolean).join(" · ");
             return (
               <div key={key} data-testid="where-row">
@@ -124,9 +131,13 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
                   <div className="flex-1 min-w-0">
                     <div className="t-body truncate">{c?.name ?? "Uncategorized"}</div>
                     <div className="t-secondary text-ink-muted truncate">{context}</div>
-                    <div className="h-1 rounded-full bg-paper-high mt-1.5 overflow-hidden" aria-hidden>
-                      <div className="h-full rounded-full" style={{ width: `${Math.round(row.share * 100)}%`, background: categoryColor(c?.color_index ?? 0) }} />
-                    </div>
+                    {row.budget ? (
+                      <ProgressLine fraction={row.budget.fraction} over={row.budget.overMinor > 0} testId="where-budget" />
+                    ) : (
+                      <div className="h-1 rounded-full bg-paper-high mt-1.5 overflow-hidden" aria-hidden>
+                        <div className="h-full rounded-full" style={{ width: `${Math.round(row.share * 100)}%`, background: categoryColor(c?.color_index ?? 0) }} />
+                      </div>
+                    )}
                   </div>
                   <div className="t-amount">{money(row.amountMinor)}</div>
                   <span className="w-[18px] shrink-0 text-ink-muted" aria-hidden>

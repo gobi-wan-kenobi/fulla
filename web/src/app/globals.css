@@ -27,6 +27,8 @@
   --on-highlight: #1b1830;
   --money-in: #7a5608;
   --money-out: #3b3648;
+  /* The jar's two liquids (MoneyColors, INK): a light surface and a deeper body each. */
+  --in-surface: #ebc766; --in-body: #b8871f; --out-surface: #a29cae; --out-body: #3b3648;
   --m0: #7a5a0e; --m1: #0a6e55; --m2: #b0452a; --m3: #1f5e73; --m4: #8f3e8a;
   --m5: #4b3f8f; --m6: #c0254e; --m7: #2f6b3a; --m8: #3d5a8f; --m9: #7a4b2a;
   --c10: #4d5b6b; --c11: #6b6480;
@@ -48,6 +50,7 @@
     --on-highlight: #1b1830;
     --money-in: #ebc766;
     --money-out: #b6b0c2;
+    --in-surface: #ebc766; --in-body: #a87a17; --out-surface: #b6b0c2; --out-body: #4f4962;
     --m0: #e9c66a; --m1: #4fd1b0; --m2: #f29a7e; --m3: #8fd0dd; --m4: #e3a2dd;
     --m5: #b8adeb; --m6: #ff7a9c; --m7: #a6d6a3; --m8: #9db6ff; --m9: #e0b08a;
     --c10: #b7c3d0; --c11: #a49cbb;

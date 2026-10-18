@@ -17,8 +17,10 @@
  *  - "Usually" is the average of up to three earlier months that have
  *    anything written down.
  */
+import { type BudgetStatus, budgetStatus, budgetsForMonth, budgetUse, monthBudget } from "./budgets";
+import { type Hero, hero } from "./jar";
 import { counted, monthOf, shiftMonth } from "./ledger";
-import { type Account, type Category, type OutsideTotals, type Transaction, nothingOutside, outsideTotals } from "./model";
+import { type Account, type Budget, type Category, type Trip, type OutsideTotals, type Transaction, nothingOutside, outsideTotals } from "./model";
 import type { LocalRow } from "./sync";
 
 export interface Figures {
@@ -44,6 +46,8 @@ export interface CategorySpend {
   usualMinor: number;
   /** Its subcategories (and its own rows, under the parent's id), largest first; empty when it has none. */
   subs: { categoryId: string; amountMinor: number }[];
+  /** Its budget for the month and what used it (trips with their own budget left out); null without one. */
+  budget?: BudgetStatus | null;
 }
 
 export interface Overview {
@@ -51,6 +55,10 @@ export interface Overview {
   /** The month is still running: what is left is "left so far", not "saved". */
   running: boolean;
   figures: Figures;
+  /** The jar: income and spending to scale. */
+  hero: Hero;
+  /** The month's budgets taken together (the budget bar); null with no budget set. */
+  budget: BudgetStatus | null;
   categories: CategorySpend[];
 }
 
@@ -138,14 +146,25 @@ export function wholePercents(shares: number[]): number[] {
   return out;
 }
 
-export function overview(rows: LocalRow[], categories: Category[], month: string, todayDate: string, accounts: Pick<Account, "id" | "type">[] = []): Overview {
+export function overview(
+  rows: LocalRow[], categories: Category[], month: string, todayDate: string, accounts: Pick<Account, "id" | "type">[] = [],
+  plans: { budgets?: Budget[]; trips?: Trip[] } = {},
+): Overview {
   const txs = counted(rows);
   const outside = outsideTotals(categories, accounts);
+  const figures = monthFigures(txs, month, outside);
+  const limits = budgetsForMonth(plans.budgets ?? [], month);
+  const used = budgetUse(txs, categories, limits, month, plans.trips ?? [], outside);
   return {
     month,
     running: month === monthOf(todayDate),
-    figures: monthFigures(txs, month, outside),
-    categories: byCategory(txs, categories, month, outside),
+    figures,
+    hero: hero(figures.incomeMinor, figures.spentMinor),
+    budget: monthBudget(limits, used),
+    categories: byCategory(txs, categories, month, outside).map((c) => {
+      const limit = c.categoryId ? limits.get(c.categoryId) : undefined;
+      return { ...c, budget: limit ? budgetStatus(limit, used.get(c.categoryId!) ?? 0) : null };
+    }),
   };
 }
 
