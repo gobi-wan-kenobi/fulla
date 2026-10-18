@@ -13,3 +13,8 @@ export * from "./detect";
 export * from "./guess";
 export * from "./wealthsimplePdf";
 export * from "./pdf";
+export * from "./statementText";
+export * from "./cardPdf";
+export * from "./investmentPdf";
+export * from "./pdfStatement";
+export * from "./pipeline";

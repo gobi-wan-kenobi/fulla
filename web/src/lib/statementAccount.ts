@@ -30,13 +30,14 @@ const KIND: Record<string, string> = { checking: "chequing", savings: "savings",
 
 /** A new account for the statement, ready to confirm: "Wealthsimple chequing ••1234". */
 export function proposedStatementAccount(householdId: string, accounts: Account[], info: StatementAccountInfo): Account {
-  const base = [info.institution ?? "Bank", KIND[info.type ?? "other"]].join(" ") + (info.last4 ? ` ••${info.last4}` : "");
+  const what = info.label?.trim() || [info.institution ?? "Bank", KIND[info.type ?? "other"]].join(" ");
+  const base = what.slice(0, 33) + (info.last4 ? ` ••${info.last4}` : "");
   const taken = new Set(accounts.map((a) => normalizeName(a.name)));
   let name = base;
   for (let n = 2; taken.has(normalizeName(name)); n++) name = `${base} (${n})`;
   return {
     id: accountIdFor(householdId, `statement|${normalizeName(info.institution ?? "")}|${info.type ?? "other"}|${info.last4 ?? ""}`),
-    name: name.slice(0, 60),
+    name: name.slice(0, 40),
     type: info.type ?? "other",
     opening_balance_minor: 0, opening_balance_date: null, round_up_to: null, round_up_multiplier: null,
     sort: accounts.length, archived: false,

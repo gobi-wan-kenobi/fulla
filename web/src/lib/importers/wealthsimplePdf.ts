@@ -31,7 +31,7 @@ export interface PdfLine {
 }
 
 /** Why a PDF cannot be read, for the import screen to say in words. */
-export type PdfProblem = "no-text" | "not-wealthsimple" | "not-chequing" | "no-rows" | "unreadable" | "password";
+export type PdfProblem = "no-text" | "not-wealthsimple" | "not-chequing" | "not-supported" | "no-rows" | "unreadable" | "password";
 
 export class PdfStatementError extends Error {
   constructor(public readonly problem: PdfProblem) {
@@ -71,6 +71,12 @@ export interface PdfStatementResult {
   period: string | null;
   /** The account the statement is for: Wealthsimple, chequing, the number's last four digits, the closing balance and day. */
   statement: StatementAccountInfo;
+  /** Which kind of statement (chequing when absent). */
+  kind?: "chequing" | "card" | "investment";
+  /** What to call the file on the import screen: "Example Card statement". */
+  format?: string;
+  /** Lines read but not imported: trades and other moves inside an investment account. */
+  ignored?: number;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -231,6 +237,8 @@ export function readWealthsimpleChequing(pages: PdfPage[], currency: Currency): 
     },
     currency: "CAD",
     period,
+    kind: "chequing",
+    format: "Wealthsimple chequing statement",
     statement: {
       institution: "Wealthsimple",
       type: "checking",

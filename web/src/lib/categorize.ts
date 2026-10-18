@@ -13,7 +13,7 @@
  * Everything here is pure, so the import, the entry screen and "apply rules
  * to what is already there" reach the same answer about the same text.
  */
-import { DEBT_KEY, type DebtKind, INSURANCE_KEY, type InsuranceKind, UNCATEGORIZED, WEB_DEFAULT_CATEGORIES } from "./defaults";
+import { DEBT_KEY, type DebtKind, FEES_KEY, INSURANCE_KEY, INTEREST_KEY, INVESTMENT_INCOME_KEY, type InsuranceKind, UNCATEGORIZED, WEB_DEFAULT_CATEGORIES } from "./defaults";
 import { defaultKeys } from "./importers/hints";
 import { KNOWN_MERCHANTS, type KnownMerchant } from "./merchants";
 import { allows, type CategorizationRule, type Category, type TransactionKind } from "./model";
@@ -115,6 +115,25 @@ export function debtCategory(categories: Category[], kind: DebtKind | null): Cat
   return categories.find((c) => !c.archived && c.parent_id === parent.id && names.has(normalizeName(c.name))) ?? parent;
 }
 
+/** Fees (a card's annual fee, an account fee), else Other; null only when there is neither. */
+export function feesCategory(categories: Category[]): Category | null {
+  return categoryForKey(categories, FEES_KEY, "expense") ?? fallbackCategory(categories, "expense");
+}
+
+/**
+ * What an investment account pays out: dividends and distributions to
+ * Investment income, interest to Interest, each falling back to the other and
+ * then to Other income.
+ */
+export function investmentIncomeCategory(categories: Category[], kind: "dividend" | "interest"): Category | null {
+  const keys = kind === "interest" ? [INTEREST_KEY, INVESTMENT_INCOME_KEY] : [INVESTMENT_INCOME_KEY, INTEREST_KEY];
+  for (const k of keys) {
+    const c = categoryForKey(categories, k, "income");
+    if (c) return c;
+  }
+  return fallbackCategory(categories, "income");
+}
+
 export const OTHER_KEY = "other";
 export const OTHER_INCOME_KEY = "other_income";
 
@@ -151,6 +170,7 @@ export interface Suggestion {
 export function merchantCategory(categories: Category[], match: MerchantMatch, kind: TransactionKind, description = ""): Category | null {
   const key = kind === "income" ? match.merchant.income : match.merchant.expense;
   if (key === INSURANCE_KEY && kind !== "income") return insuranceCategory(categories, insuranceKind(description));
+  if (key === DEBT_KEY && kind !== "income") return debtCategory(categories, "card_interest");
   return key ? categoryForKey(categories, key, kind) : null;
 }
 

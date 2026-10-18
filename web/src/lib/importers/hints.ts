@@ -20,6 +20,8 @@ const SYNONYMS: Record<string, string[]> = {
   debt_payments: ["debt", "debts", "debt payment", "loans", "loan payments", "deudas", "dettes", "schulden", "debiti", "dividas"],
   insurance: ["insurance", "insurances", "seguro", "assurance", "versicherung", "assicurazione"],
   interest: ["interest income", "interest earned", "bank interest", "zinsertrag"],
+  fees: ["fee", "bank fees", "bank charges", "service charges", "comisiones bancarias", "frais bancaires"],
+  investment_income: ["investment income", "dividends", "dividend income", "dividendes", "dividendos", "dividenden"],
   other_income: ["otros", "varios", "others", "autres", "sonstige", "altri", "outros"],
 };
 

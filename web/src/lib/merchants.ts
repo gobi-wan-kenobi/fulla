@@ -79,7 +79,8 @@ export const KNOWN_MERCHANTS: KnownMerchant[] = [
   m(["e-transfer", "e transfer", "etransfer", "interac e-transfer", "interac etransfer", "email money transfer"], "other",
     { income: "other_income" }),
   m(["service charge", "monthly fee", "monthly account fee", "nsf", "overdraft", "overdraft interest", "atm fee",
-    "annual fee", "interest charge", "interest charges"], "other"),
+    "annual fee", "membership fee"], "fees"),
+  m(["interest charge", "interest charges", "purchase interest", "cash advance interest"], "debt_payments", { fixed: false }),
   m(["interest", "interest earned", "deposit interest", "interest paid", "interest credit"], null, { income: "interest" }),
   m(["cashback", "cash back"], null, { income: "other_income" }),
   // Insurance (the kind, life, home, auto or health, is read from the words: categorize.ts insuranceKind)

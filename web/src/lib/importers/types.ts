@@ -16,7 +16,23 @@ export interface StatementLine {
   account?: string | null;
   /** True when the file marks the line as a fixed amount; null when it says nothing. */
   fixed?: boolean | null;
+  /**
+   * What the statement itself says the line is, when its layout says (a card's
+   * payments section, an investment account's activity code); categorizing
+   * then follows it before anything else:
+   *  - card-payment: a payment that reached the card (a transfer from the bank);
+   *  - transfer: money moved between the household's own accounts;
+   *  - credit: a refund or credit on a card (reduces spending);
+   *  - card-interest, fee: what the card or account charged;
+   *  - dividend, interest: what an investment account paid.
+   */
+  role?: LineRole | null;
+  /** A purchase made in another currency: the amount in that currency (minor units, positive) and its code. */
+  originalAmountMinor?: number | null;
+  originalCurrency?: string | null;
 }
+
+export type LineRole = "card-payment" | "transfer" | "credit" | "card-interest" | "fee" | "dividend" | "interest";
 
 export interface SkippedLine {
   line: number;
@@ -31,11 +47,21 @@ export interface SkippedLine {
 export interface StatementAccountInfo {
   institution: string | null;
   type: "checking" | "savings" | "credit_card" | "other" | null;
-  /** Exactly four digits, or null. */
+  /** Four digits (or, for an account number with letters, its last four letters and digits, upper case), or null. */
   last4: string | null;
+  /**
+   * The balance at the end, as the account's balance: what a card is owed is
+   * negative (a liability), an investment account is its market value.
+   */
   closingBalanceMinor: number | null;
   /** YYYY-MM-DD. */
   closingDate: string | null;
+  /** What to call a new account for it, before the digits: "Example Bank Gold Card", "Example Broker TFSA". */
+  label?: string | null;
+  /** YYYY-MM-DD: the first day the statement covers, when it says. */
+  periodStart?: string | null;
+  /** The statement's version when it says (an amended statement replaces the one before); 1 otherwise. */
+  version?: number | null;
 }
 
 /** The last four digits of an account number as printed ("Account number: 000012345", "••••0042"); null for fewer than four. */

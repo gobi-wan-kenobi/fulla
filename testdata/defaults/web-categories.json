@@ -16,6 +16,18 @@
       },
       "subcategories": [
         {
+          "key": "card_interest",
+          "name": {
+            "en": "Credit card interest",
+            "es": "Intereses de tarjeta",
+            "fr": "Intérêts de carte de crédit",
+            "de": "Kreditkartenzinsen",
+            "it": "Interessi carta di credito",
+            "pt": "Juros do cartão de crédito"
+          },
+          "fixed": false
+        },
+        {
           "key": "personal_loan",
           "name": {
             "en": "Personal loan",
@@ -156,6 +168,34 @@
         "de": "Zinsen",
         "it": "Interessi",
         "pt": "Juros"
+      }
+    },
+    {
+      "key": "fees",
+      "applies_to": "expense",
+      "icon": "receipt",
+      "color_index": 11,
+      "name": {
+        "en": "Fees",
+        "es": "Comisiones",
+        "fr": "Frais",
+        "de": "Gebühren",
+        "it": "Commissioni",
+        "pt": "Tarifas"
+      }
+    },
+    {
+      "key": "investment_income",
+      "applies_to": "income",
+      "icon": "savings",
+      "color_index": 8,
+      "name": {
+        "en": "Investment income",
+        "es": "Rendimientos de inversión",
+        "fr": "Revenus de placement",
+        "de": "Kapitalerträge",
+        "it": "Redditi da investimenti",
+        "pt": "Rendimentos de investimentos"
       }
     }
   ]

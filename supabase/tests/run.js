@@ -287,7 +287,8 @@ test('a new household has its owner, the default categories and two accounts, an
   assert.equal(debt.fixed, true);
   const subs = cfg.categories.filter((c) => c.parent_id === debt.id).sort((a, b) => a.sort - b.sort);
   assert.deepEqual(subs.map((c) => c.name), web.categories[0].subcategories.map((s) => s.name.en));
-  assert.ok(subs.every((c) => c.fixed && c.applies_to === 'expense'));
+  // Every kind of debt is fixed but card interest, which changes every month (0028).
+  assert.ok(subs.every((c) => c.fixed === (c.name !== 'Credit card interest') && c.applies_to === 'expense'));
   assert.deepEqual(cfg.accounts.map((a) => a.name), defaults.accounts.map((a) => a.name.en));
   assert.equal(cfg.members.length, 1);
   assert.equal(cfg.members[0].role, 'owner');
@@ -1823,7 +1824,10 @@ test('an account keeps its bank and last four digits, refuses more, and keeps th
   const again = rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id, name: 'Renamed', type: 'checking' } }).accounts.find((x) => x.id === id);
   assert.equal(again.last4, '0042');
   assert.equal(again.institution, 'Example Bank');
-  for (const last4 of ['12345', '00000000', 'abcd', '12 4']) {
+  // An investment account's number has letters: its last four letters and digits, upper case (0028).
+  const letters = rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id: uuid(), name: 'Example TFSA', type: 'other', institution: 'Example Broker', last4: 'XY7Z' } });
+  assert.ok(letters.accounts.some((x) => x.last4 === 'XY7Z'));
+  for (const last4 of ['12345', '00000000', 'abcd', '12 4', 'AB-1']) {
     expectError(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id, name: 'Renamed', type: 'checking', last4 } }, 'validation_failed', 400);
   }
   const cleared = rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id, name: 'Renamed', type: 'checking', last4: null } }).accounts.find((x) => x.id === id);
@@ -1865,6 +1869,18 @@ test('new households start with Insurance (fixed, four kinds) and Interest incom
   assert.deepEqual(cats.filter((c) => c.parent_id === ins.id).map((c) => [c.name, c.fixed]).sort(),
     [['Auto insurance', true], ['Health insurance', true], ['Home insurance', true], ['Life insurance', true]]);
   assert.equal(cats.find((c) => c.name === 'Interest').applies_to, 'income');
+});
+
+test('new households start with Fees, Investment income and Credit card interest under Debt payments, not fixed (0028)', (ctx) => {
+  const cats = rpc(ctx.db, ctx.alice, 'fulla_config_get', { p_household_id: ctx.hh }).categories;
+  const fees = cats.find((c) => c.name === 'Fees' && c.parent_id === null);
+  assert.ok(fees && fees.applies_to === 'expense' && !fees.fixed);
+  assert.equal(cats.find((c) => c.name === 'Investment income' && c.parent_id === null).applies_to, 'income');
+  const debt = cats.find((c) => c.name === 'Debt payments' && c.parent_id === null);
+  const card = cats.find((c) => c.name === 'Credit card interest');
+  assert.equal(card.parent_id, debt.id);
+  assert.equal(card.fixed, false);
+  assert.equal(cats.find((c) => c.name === 'Personal loan').fixed, true);
 });
 
 test('a category change is saved as a scrubbed example with labels, only by members', (ctx) => {

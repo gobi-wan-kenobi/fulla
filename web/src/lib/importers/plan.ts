@@ -5,12 +5,23 @@
 import { DEFAULT_CATEGORIES } from "../defaults";
 import { importedId, sha256Hex, uuid5 } from "../ids";
 import type { Account, AppliesTo, CategorizationRule, Category, Member, Split, Transaction, TransactionKind } from "../model";
-import { type CategorySource, debtCategory, incomingKind, knownMerchant, matchRule, merchantCategory, type MerchantMatch } from "../categorize";
+import { type CategorySource, debtCategory, feesCategory, incomingKind, investmentIncomeCategory, knownMerchant, matchRule, merchantCategory, type MerchantMatch } from "../categorize";
 import { normalizeName } from "../text";
 import { REVIEW_TAG, withTag } from "../review";
-import { type KnownDebt, type KnownTransfer, isTransferWithPerson, knownDebt, knownTransfer } from "../transfers";
+import { BANK_ACCOUNT, type KnownDebt, type KnownTransfer, OTHER_ACCOUNT, isTransferWithPerson, knownDebt, knownTransfer } from "../transfers";
 import { defaultKeys, iconFor, synonymsOf } from "./hints";
 import type { StatementLine } from "./types";
+
+/** A transfer the statement itself marks (a card's payments section, an investment account's contributions). */
+function statedTransfer(line: StatementLine): KnownTransfer | null {
+  if (line.role === "card-payment" && line.amountMinor > 0) {
+    return { counterpart: BANK_ACCOUNT, counterpartType: "checking", direction: "in", reason: "card-payment" };
+  }
+  if (line.role === "transfer" && line.amountMinor !== 0) {
+    return { counterpart: OTHER_ACCOUNT, counterpartType: "other", direction: line.amountMinor < 0 ? "out" : "in", reason: "own-account" };
+  }
+  return null;
+}
 
 export { matchRule } from "../categorize";
 
@@ -139,7 +150,17 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
     line: StatementLine; account: string; rule: CategorizationRule | null; pocket: Account | null; name: string | null;
     merchant: MerchantMatch | null; transfer: { known: KnownTransfer; counterpart: Account } | null;
     debt: { known: KnownDebt; category: Category } | null;
+    stated: Category | null;
   }
+  const statedCategory = (line: StatementLine): Category | null => {
+    switch (line.role) {
+      case "card-interest": return line.amountMinor < 0 ? debtCategory(categories, "card_interest") : null;
+      case "fee": return line.amountMinor < 0 ? feesCategory(categories) : null;
+      case "dividend": return line.amountMinor > 0 ? investmentIncomeCategory(categories, "dividend") : null;
+      case "interest": return line.amountMinor > 0 ? investmentIncomeCategory(categories, "interest") : null;
+      default: return null;
+    }
+  };
   const read: Read[] = lines.map((line) => {
     const named = line.account?.trim();
     const lineAccount = named ? accountFor(named).id : accountId;
@@ -152,20 +173,24 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
     }
     const name = line.bankCategory && !rule?.action.category_id && !pocket ? line.bankCategory.trim() || null : null;
     const free = !rule?.action.category_id && !rule?.action.kind && !pocket && !name;
-    const known = input.knownTransfers && free ? knownTransfer(line.description, line.amountMinor) : null;
+    const known = free ? (statedTransfer(line) ?? (input.knownTransfers ? knownTransfer(line.description, line.amountMinor) : null)) : null;
     const counterpart = known ? accountFor(known.counterpart, known.counterpartType, known.counterpartLast4 ?? null) : null;
     const transfer = known && counterpart && counterpart.id !== lineAccount ? { known, counterpart } : null;
-    const owed = input.knownTransfers && free && !transfer ? knownDebt(line.description, line.amountMinor) : null;
+    // What the statement says the line is: a card's interest and fees, an investment account's dividends.
+    const stated = free && !transfer ? statedCategory(line) : null;
+    const owed = input.knownTransfers && free && !transfer && !stated ? knownDebt(line.description, line.amountMinor) : null;
     const owedCategory = owed ? debtCategory(categories, owed.kind) : null;
     const debt = owed && owedCategory ? { known: owed, category: owedCategory } : null;
-    const merchant = input.knownMerchants && free && !transfer && !debt ? knownMerchant(line.description) : null;
-    return { line, account: lineAccount, rule, pocket, name, merchant, transfer, debt };
+    const merchant = input.knownMerchants && free && !transfer && !debt && !stated ? knownMerchant(line.description) : null;
+    return { line, account: lineAccount, rule, pocket, name, merchant, transfer, debt, stated };
   });
 
   const kindOf = (r: Read): TransactionKind => {
     if (r.rule?.action.kind === "transfer" && r.line.amountMinor < 0) return "transfer";
     if (r.pocket || r.transfer) return "transfer";
     if (r.line.amountMinor < 0) return "expense";
+    // A refund or credit on a card: less spending, in the category of what was bought.
+    if (r.line.role === "credit") return "refund";
     if (r.rule?.action.category_id && categories.find((c) => c.id === r.rule!.action.category_id)?.applies_to === "expense") return "refund";
     if (r.merchant && incomingKind(r.line.description) === "refund" && merchantCategory(categories, r.merchant, "refund")) return "refund";
     return "income";
@@ -222,11 +247,12 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
     const toWrite = category && !categories.some((c) => sameCategory(c, category)) ? category : null;
     const payer = (line.payer ? members.get(normalizeName(line.payer))?.id : undefined) ?? input.payerMemberId;
     const ruled = r.rule?.action.category_id ?? null;
-    const owed = !ruled && !category && r.debt && kind === "expense" ? r.debt.category : null;
+    const stated = !ruled && !category && r.stated && kind !== "transfer" ? r.stated : null;
+    const owed = !ruled && !category && !stated && r.debt && kind === "expense" ? r.debt.category : null;
     const known = !ruled && !category && !owed && r.merchant && kind !== "transfer" ? merchantCategory(categories, r.merchant, kind, r.line.description) : null;
-    const chosen = ruled ?? category?.id ?? owed?.id ?? known?.id ?? null;
+    const chosen = ruled ?? category?.id ?? stated?.id ?? owed?.id ?? known?.id ?? null;
     const source: CategorySource | null =
-      kind === "transfer" ? null : ruled ? "rule" : category ? "file" : owed ? "debt" : known ? "merchant" : "fallback";
+      kind === "transfer" ? null : ruled ? "rule" : category || stated ? "file" : owed ? "debt" : known ? "merchant" : "fallback";
     const chosenCategory = chosen ? (categories.find((c) => c.id === chosen) ?? category) : null;
     const fixedByDefault = line.fixed == null && kind !== "transfer" &&
       (!!owed || !!chosenCategory?.fixed || (!!known && !!r.merchant?.merchant.fixed));
@@ -235,7 +261,9 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
       paid_by_member_id: null, to_member_id: null, split: null,
       recurrence: (line.fixed === true || fixedByDefault) && kind !== "transfer" ? "fixed" : "variable",
       note: line.description.slice(0, 500), tags: r.rule?.action.tags ?? [], extras: {}, status: "active",
-      recurring_rule_id: null, occurrence_date: null, import_fingerprint: fp, original_currency: null,
+      recurring_rule_id: null, occurrence_date: null, import_fingerprint: fp,
+      // A purchase in another currency keeps what it cost there, beside the amount charged.
+      ...(line.originalCurrency && line.originalAmountMinor ? { original_amount_minor: line.originalAmountMinor, original_currency: line.originalCurrency } : { original_currency: null }),
       trip_id: null, created_at: input.now, client_updated_at: input.now,
     };
     let tx: Transaction;

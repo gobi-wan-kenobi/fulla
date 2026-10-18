@@ -32,4 +32,6 @@ export const DEBT_KEY = "debt_payments";
 export const INSURANCE_KEY = "insurance";
 export type InsuranceKind = "life_insurance" | "home_insurance" | "auto_insurance" | "health_insurance";
 export const INTEREST_KEY = "interest";
-export type DebtKind = "personal_loan" | "line_of_credit" | "bnpl" | "student_loan" | "car_loan" | "other_debt";
+export const FEES_KEY = "fees";
+export const INVESTMENT_INCOME_KEY = "investment_income";
+export type DebtKind = "card_interest" | "personal_loan" | "line_of_credit" | "bnpl" | "student_loan" | "car_loan" | "other_debt";

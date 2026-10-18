@@ -5,19 +5,17 @@ import { api, categorizer } from "@/lib/api";
 import { fallbackCategory } from "@/lib/categorize";
 import { type ModelAnswer, modelCategory, modelTransfer } from "@/lib/categorizer";
 import { history, howOftenSeen } from "@/lib/categorize/facts";
-import { REVIEW_TAG, withTag, withoutTag } from "@/lib/review";
-import { examplesFor, sendExamples, sortedBy } from "@/lib/examples";
+import { examplesFor, sendExamples } from "@/lib/examples";
 import { randomId } from "@/lib/ids";
 import {
   DATE_FORMATS, type ImportProfile, type PdfProblem, type PdfStatementResult, type SavedProfile, type StatementFormat,
   type StatementResult, PdfStatementError, columnValues, decodeText, detectFormat, dropRepeatedBankIds, extractPdfPages,
   guessDelimiter, guessProfile, isPdf, newAccounts, newCategories, ofxCurrency, previewCsv, profileFromJson, profileToJson,
-  accountIdFor, propose, readCsv, readOfx, readQif, readWealthsimpleChequing,
+  accountIdFor, buildImport, propose, readCsv, readOfx, readQif, readPdfStatement,
 } from "@/lib/importers";
 import { loadPdfJs } from "@/lib/importers/pdfBrowser";
 import { categoriesFor } from "@/lib/ledger";
 import { digitsDiffer, findStatementAccount, linkedAccount, proposedStatementAccount } from "@/lib/statementAccount";
-import { matchTransfers } from "@/lib/transferMatch";
 import { activeMembers, isCategorised, type Account, type Category, type Config, type Transaction } from "@/lib/model";
 import { currencyOf, formatMoney } from "@/lib/money";
 import type { LocalRow } from "@/lib/sync";
@@ -30,6 +28,7 @@ const PDF_PROBLEMS: Record<PdfProblem, string> = {
   "no-text": "That PDF has no text to read: it may be a scan or a photo. Download the statement from your bank's website or app instead, or export a CSV, OFX or QFX.",
   "not-wealthsimple": "Fulla reads PDF statements from Wealthsimple chequing only, for now. For another bank, export a CSV, OFX or QFX from its website.",
   "not-chequing": "That is not a Wealthsimple chequing statement. Fulla reads the chequing monthly statement PDF; for other accounts, export a CSV.",
+  "not-supported": "Fulla reads PDF statements from Wealthsimple (chequing and investment accounts), American Express and Capital One cards, for now. For another bank, export a CSV, OFX or QFX from its website.",
   "no-rows": "That statement has no transactions in it.",
   unreadable: "That PDF could not be opened. It may be damaged; try downloading it again.",
   password: "That PDF is locked with a password. Download an unlocked copy from your bank first.",
@@ -37,7 +36,8 @@ const PDF_PROBLEMS: Record<PdfProblem, string> = {
 
 /**
  * A bank statement into the household, as the Android import screen: pick a
- * file (OFX, QFX, QIF, CSV or a Wealthsimple chequing PDF, told apart by
+ * file (OFX, QFX, QIF, CSV or a PDF statement: Wealthsimple chequing or
+ * investment, American Express or Capital One card; told apart by
  * content), say which account it is and, for CSV, which column is which;
  * check the preview (for a PDF, every running balance is checked); import. The file
  * is read here in the browser and never uploaded anywhere: only the rows you
@@ -86,7 +86,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
       setReadingPdf(true);
       try {
         const pages = await extractPdfPages(read, await loadPdfJs());
-        const statement = readWealthsimpleChequing(pages, currency);
+        const statement = readPdfStatement(pages, currency);
         setPdf(statement);
         setFileName(file.name);
         setFormat("pdf");
@@ -230,12 +230,6 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
     // Fixed or flexible is the category's to say (categories.fixed), never the model's.
     return c ? { transfer: null, category: c, fixed: !!c.fixed } : null;
   };
-  /** A line the model calls a transfer, as one: out of the totals, between two accounts. */
-  const asTransfer = (t: Transaction, g: Extract<Guess, { category: null }>): Transaction => ({
-    ...t, kind: "transfer", category_id: null, paid_by_member_id: null, split: null, recurrence: "variable",
-    account_id: g.direction === "out" ? t.account_id : g.transfer.id,
-    to_account_id: g.direction === "out" ? g.transfer.id : t.account_id,
-  });
   const brandNew = createdCategories.filter((c) => !config.categories.some((k) => k.id === c.id));
   const statedCurrency = bytes && format === "ofx" ? ofxCurrency(bytes) : format === "pdf" && pdf ? pdf.currency : null;
   // A PDF's running balances, checked line by line (wealthsimplePdf.ts): a line that does not add up
@@ -261,69 +255,35 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
     }
   }
 
-  /** The rows the import writes: each line as sorted, with your changes and the categorizer's answers. */
-  function sortedRows(): { txs: Transaction[]; modelAccounts: Map<string, Account>; examples: { before: Transaction; after: Transaction }[] } {
-    const modelAccounts = new Map<string, Account>();
-    const examples: { before: Transaction; after: Transaction }[] = [];
-    // What Fulla would write for a line, marked with how it was sorted (examples.ts).
-    const auto = (p: (typeof fresh)[number]): Transaction => {
-      const t = p.transaction;
-      const answer = answers[t.id];
-      if (p.source !== "fallback") return sortedBy(t, p.source === null ? "none" : p.source);
-      const guess = modelGuess(t, p.line.description);
-      const by = answer?.by === "jev" ? "jev" : answer ? "model" : "none";
-      if (!guess) return sortedBy(toReview(t) ? withTag(t, REVIEW_TAG) : t, "none", answer?.confidence ?? null);
-      if (guess.category === null) {
-        if (!config.accounts.some((a) => a.id === guess.transfer.id)) modelAccounts.set(guess.transfer.id, guess.transfer);
-        return asTransfer(t, guess);
-      }
-      return sortedBy({ ...t, category_id: guess.category.id, recurrence: guess.fixed ? ("fixed" as const) : t.recurrence }, by, answer?.confidence ?? null);
-    };
-    const txs = fresh.map((p) => {
-      const t = p.transaction;
-      const chosen = overrides[t.id];
-      if (!chosen) return auto(p);
-      const c = config.categories.find((k) => k.id === chosen);
-      const before = auto(p);
-      const after = sortedBy({ ...withoutTag(t, REVIEW_TAG), category_id: chosen, recurrence: c?.fixed ? ("fixed" as const) : t.recurrence }, "user");
-      examples.push({ before, after });
-      return after;
-    });
-    return { txs, modelAccounts, examples };
-  }
-  /** Transfers matched to the other statement's line (transferMatch.ts), on every import. */
-  function matched(txs: Transaction[], extra: Account[]) {
-    return matchTransfers({
-      accountId: account ?? "", fresh: txs, existing: rows.map((r) => r.tx),
-      accounts: [...config.accounts, ...createdAccounts, ...extra, ...(proposedAccount ? [proposedAccount] : [])],
-    });
-  }
-  const preview = account && fresh.length > 0 ? matched(sortedRows().txs, []) : null;
+  /** The rows the import writes (importers/pipeline.ts): sorted, the statement's version kept, transfers matched. */
+  const built = useMemo(() => (account && proposals.length > 0 ? buildImport({
+    householdId: config.household.id, categories: config.categories, accounts: config.accounts, rows: rows.map((r) => r.tx),
+    proposals, createdAccounts, accountId: account, proposedAccount: proposedAccount?.id === account ? proposedAccount : null,
+    statement: info, answers, overrides,
+  }) : null), [account, proposals, config, rows, createdAccounts, proposedAccount, info, answers, overrides]);
+  const preview = built && fresh.length > 0 ? built : null;
 
   async function runImport() {
+    if (!built || built.older) return;
     setBusy(true);
     setError(null);
     try {
-      const { txs, modelAccounts, examples } = sortedRows();
-      const m = matched(txs, [...modelAccounts.values()]);
-      const used = new Set(m.insert.map((t) => t.category_id).filter(Boolean));
-      const accountsUsed = new Set([...m.insert, ...m.update].flatMap((t) => [t.account_id, t.to_account_id]).filter(Boolean));
-      const made = new Map(createdAccounts.map((a) => [a.id, a]));
-      for (const [id, a] of modelAccounts) if (!made.has(id)) made.set(id, a);
-      const write = [...made.values()].filter((a) => accountsUsed.has(a.id));
+      const used = new Set(built.insert.map((t) => t.category_id).filter(Boolean));
+      const write = [...built.accounts];
       // The statement's account first: new, or the chosen one given the statement's bank and digits.
-      if (chosenAccount && proposedAccount?.id === chosenAccount.id) write.unshift(chosenAccount);
-      else if (chosenAccount) {
+      if (chosenAccount && proposedAccount?.id === chosenAccount.id) {
+        if (!write.some((a) => a.id === chosenAccount.id)) write.unshift(chosenAccount);
+      } else if (chosenAccount) {
         const linked = linkedAccount(chosenAccount, info);
         if (linked) write.unshift(linked);
       }
-      const n = await onImport(m.insert, write, createdCategories.filter((c) => used.has(c.id)), m.update);
-      void sendExamples(config.household.id, examplesFor(examples, "import", currency.minorUnits));
+      const n = await onImport(built.insert, write, createdCategories.filter((c) => used.has(c.id)), built.update);
+      void sendExamples(config.household.id, examplesFor(built.examples, "import", currency.minorUnits));
       if (account && info?.closingBalanceMinor != null && info.closingDate) {
         try {
           await api.balanceSnapshotSave(config.household.id, { account_id: account, as_of: info.closingDate, balance_minor: info.closingBalanceMinor });
         } catch {
-          // The balance is kept for later charts; the import itself is done.
+          // The balance is kept for net worth; the import itself is done.
         }
       }
       setDone(n);
@@ -358,7 +318,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
         }}
       />
       {!bytes ? (
-        <EmptyState title="Bring in a statement" text="OFX, QFX, QIF or CSV from your bank, or a Wealthsimple chequing PDF. It is read here, on this phone; importing the same file again adds nothing twice.">
+        <EmptyState title="Bring in a statement" text="OFX, QFX, QIF or CSV from your bank, or a PDF statement: Wealthsimple chequing and investment accounts, American Express and Capital One cards. It is read here, on this phone; importing the same file again adds nothing twice.">
           <PrimaryButton onClick={() => fileInput.current?.click()} busy={readingPdf} testId="choose-file">Choose a file</PrimaryButton>
           {readingPdf && <p className="t-secondary text-ink-muted pt-4">Reading the PDF…</p>}
           {done !== null && <p className="t-body pt-4" data-testid="import-done">Imported {done} transaction{done === 1 ? "" : "s"}.</p>}
@@ -369,11 +329,22 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
       ) : (
         <>
           <p className="t-secondary text-ink-muted px-5">
-            {fileName} · {format === "ofx" ? "OFX / QFX" : format === "pdf" ? `Wealthsimple chequing PDF${pdf?.period ? `, ${pdf.period}` : ""}` : format.toUpperCase()}
+            {fileName} · {format === "ofx" ? "OFX / QFX" : format === "pdf" ? `${pdf?.format ?? "PDF statement"}${pdf?.period ? `, ${pdf.period}` : ""}` : format.toUpperCase()}
           </p>
+          {format === "pdf" && pdf && (pdf.ignored ?? 0) > 0 && (
+            <p className="t-secondary text-ink-muted px-5" data-testid="ignored-lines">
+              {pdf.ignored} trades and other moves inside the account left out: they are not money in or out.
+            </p>
+          )}
+          {built?.older && (
+            <p className="t-secondary text-warning px-5 pt-2" data-testid="older-version">A later version of this statement is already imported; this one changes nothing.</p>
+          )}
+          {built && built.replaced > 0 && (
+            <p className="t-secondary text-ink-muted px-5 pt-2" data-testid="replaces-version">This version replaces the one imported before: {built.replaced} of its lines are no longer on it and are removed.</p>
+          )}
           {balance && balance.ok && (
             <p className="t-secondary text-money-in px-5 pt-2" data-testid="balance-ok">
-              Every running balance adds up
+              {pdf?.kind === "card" ? "The lines add up from the previous balance to the new one" : "Every running balance adds up"}
               {balance.openingMinor !== null && balance.closingMinor !== null
                 ? `: ${formatMoney(balance.openingMinor, "CAD", locale)} to ${formatMoney(balance.closingMinor, "CAD", locale)}.`
                 : "."}
@@ -561,7 +532,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
           </div>
           {error && <p className="t-secondary text-danger px-5 pt-3">{error}</p>}
           <div className="p-5 grid gap-3">
-            <PrimaryButton onClick={() => void runImport()} disabled={fresh.length === 0 || balanceBlocks} busy={busy} testId="import-run">
+            <PrimaryButton onClick={() => void runImport()} disabled={fresh.length === 0 || balanceBlocks || !!built?.older} busy={busy} testId="import-run">
               Import {fresh.length}
             </PrimaryButton>
             <button type="button" className="t-secondary text-ink-muted py-2" onClick={() => { setBytes(null); setPdf(null); }}>Cancel</button>

@@ -10,7 +10,9 @@
  *  - same amount, the other direction, within MATCH_DAYS days;
  *  - the transfer's far end is the account being imported, or a stand-in
  *    account (one with nothing but transfers on it) that could be it: same
- *    type or "other", and no different last four digits;
+ *    type or "other", no different last four digits, and not named for
+ *    another kind of registered account (a "Family RESP" stand-in is never
+ *    the TFSA); one named like the account wins over a generic one;
  *  - the line's own far end is the transfer's statement account or such a
  *    stand-in.
  *
@@ -60,6 +62,22 @@ export interface MatchResult {
   unmatched: number;
 }
 
+/** The kind of registered or investment account a name says, if it says one. */
+const PLAN = /\b(tfsa|rrsp|rrif|resp|fhsa|lira|crypto|non registered|nonregistered)\b/;
+function planOf(name: string): string | null {
+  return PLAN.exec(normalizeName(name).replace(/-/g, " "))?.[1].replace("nonregistered", "non registered") ?? null;
+}
+const GENERIC = new Set(["account", "accounts", "card", "cards", "bank", "other", "the", "and", "for", "my", "our"]);
+const nameWords = (name: string) => new Set(normalizeName(name).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3 && !GENERIC.has(w)));
+/** 0 when a stand-in's name shares a word with the real account's, 1 for a generic stand-in, 3 for one named something else. */
+function nameFit(standIn: Account | undefined, real: Account | undefined): number {
+  if (!standIn || !real) return 1;
+  const a = nameWords(standIn.name);
+  if (a.size === 0) return 1;
+  for (const w of nameWords(real.name)) if (a.has(w)) return 0;
+  return 3;
+}
+
 const days = (a: string, b: string) => Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400000;
 
 /** "Interac e-Transfer® Out to Example Person" → {"example", "person"}: the other party's name, as words. */
@@ -89,6 +107,9 @@ export function matchTransfers(input: MatchInput): MatchResult {
     const r = byId.get(real);
     if (!e || !r) return true;
     if (e.last4 && r.last4 && e.last4 !== r.last4) return false;
+    const pe = planOf(e.name);
+    const pr = planOf(r.name);
+    if (pe && pr && pe !== pr) return false;
     const bank = (k: Account["type"]) => k === "checking" || k === "savings" || k === "cash";
     return e.type === "other" || r.type === "other" || e.type === r.type || (bank(e.type) && bank(r.type));
   };
@@ -123,7 +144,8 @@ export function matchTransfers(input: MatchInput): MatchResult {
       const mine = out ? r.account_id : r.to_account_id; // the end that should be `side`
       if (!other || other === side || !couldBe(mine, side)) continue;
       if (far && !couldBe(far, other)) continue;
-      const score = (mine === side ? 0 : 10) + (far === other ? 0 : 5) + gap;
+      const fit = mine === side ? 0 : nameFit(byId.get(mine ?? ""), byId.get(side));
+      const score = (mine === side ? 0 : 10) + (far === other ? 0 : 5) + gap + fit;
       if (!best || score < best.score) best = { r, score };
     }
     return best?.r ?? null;
