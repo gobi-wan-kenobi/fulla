@@ -33,6 +33,8 @@ export interface KnownTransfer {
   /** "out": from the imported account to the counterpart; "in": the other way. */
   direction: "out" | "in";
   reason: TransferReason;
+  /** The last four digits of the counterpart's number, when the text shows them ("account ••••0042"). */
+  counterpartLast4?: string | null;
 }
 
 /** The counterpart's name when the text names no account. */
@@ -113,7 +115,8 @@ export function knownTransfer(description: string, amountMinor: number): KnownTr
 
   // A credit card bill paid from the bank.
   if (out && CARD.test(words) && PAYMENT.test(words) && !NOT_A_CARD_PAYMENT.test(words)) {
-    return { counterpart: cardName(original, words), counterpartType: "credit_card", direction: "out", reason: "card-payment" };
+    const last4 = /account\s*[∙•·*xX#]{2,}\s*(\d{4})\b/i.exec(original)?.[1] ?? null;
+    return { counterpart: cardName(original, words), counterpartType: "credit_card", direction: "out", reason: "card-payment", counterpartLast4: last4 };
   }
 
   return null;

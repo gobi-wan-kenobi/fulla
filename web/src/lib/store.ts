@@ -54,7 +54,7 @@ export interface Household {
   deleteTransaction: (row: LocalRow) => Promise<void>;
   /** Several edits at once (bulk recategorize), then one sync. */
   saveTransactions: (changes: { tx: Transaction; existing: LocalRow }[]) => Promise<number>;
-  importTransactions: (txs: Transaction[], accounts: Account[], categories: Category[]) => Promise<number>;
+  importTransactions: (txs: Transaction[], accounts: Account[], categories: Category[], updates?: Transaction[]) => Promise<number>;
   setConfig: (c: Config) => void;
 }
 
@@ -193,7 +193,7 @@ export function useHousehold(householdId: string): Household {
   );
 
   const importTransactions = useCallback(
-    async (txs: Transaction[], accounts: Account[], categories: Category[]) => {
+    async (txs: Transaction[], accounts: Account[], categories: Category[], updates: Transaction[] = []) => {
       // Accounts and categories first: a row must never reach the server before what it names.
       for (const a of accounts) state.current.config = await api.accountUpsert(householdId, a);
       for (const c of categories) state.current.config = await api.categoryUpsert(householdId, c);
@@ -204,6 +204,11 @@ export function useHousehold(householdId: string): Household {
         if (state.current.rows[t.id]) continue;
         state.current.rows[t.id] = createRow(household ? sharedPotForNew(t, household) : t, now);
         n++;
+      }
+      // Rows the import changed (transferMatch.ts): a transfer matched to its other statement, a duplicate removed.
+      for (const u of updates) {
+        const held = state.current.rows[u.id];
+        if (held) state.current.rows[u.id] = editRow(held, u, now);
       }
       commit();
       await sync();

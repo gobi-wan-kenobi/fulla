@@ -23,9 +23,31 @@ export interface SkippedLine {
   reason: "date" | "amount";
 }
 
+/**
+ * What a statement says about its own account, when it says: the bank, the
+ * kind of account, the last four digits of its number (never more), and the
+ * balance at the end. Used to find (or offer to make) the account on import.
+ */
+export interface StatementAccountInfo {
+  institution: string | null;
+  type: "checking" | "savings" | "credit_card" | "other" | null;
+  /** Exactly four digits, or null. */
+  last4: string | null;
+  closingBalanceMinor: number | null;
+  /** YYYY-MM-DD. */
+  closingDate: string | null;
+}
+
+/** The last four digits of an account number as printed ("Account number: 000012345", "••••0042"); null for fewer than four. */
+export function lastFour(text: string | null | undefined): string | null {
+  const digits = (text ?? "").replace(/\D/g, "");
+  return digits.length >= 4 ? digits.slice(-4) : null;
+}
+
 export interface StatementResult {
   lines: StatementLine[];
   skipped: SkippedLine[];
+  statement?: StatementAccountInfo | null;
 }
 
 export type AmountColumns =

@@ -242,6 +242,8 @@ test('a stranger gets not_member from every function that takes a household', (c
     ['fulla_sync_pull', { p_household_id: hh }],
     ['fulla_period_summary', { p_household_id: hh, p_from: '2030-01', p_to: '2030-12' }],
     ['fulla_member_balances', { p_household_id: hh }],
+    ['fulla_balance_snapshot_save', { p_household_id: hh, p_snapshot: {} }],
+    ['fulla_balance_snapshots', { p_household_id: hh }],
   ];
   const covered = new Set(calls.map((c) => c[0]));
   const all = ctx.db.admin(`
@@ -1804,6 +1806,51 @@ test('a pull between two concurrent writers never skips the slower one', async (
   const got = [...between.transactions, ...after.transactions].map((t) => t.id).sort();
   assert.deepEqual(got, [slow.id, fast.id].sort(), 'both rows reach the reader');
   assert.ok(Number(stored(ctx, slow.id).server_seq) < Number(stored(ctx, fast.id).server_seq));
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Accounts from statements and balance snapshots (0025)
+// ═════════════════════════════════════════════════════════════════════════════
+
+test('an account keeps its bank and last four digits, refuses more, and keeps them when a save leaves them out', (ctx) => {
+  const id = uuid();
+  const saved = rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id, name: 'Example chequing', type: 'checking', institution: 'Example Bank', last4: '0042' } });
+  const a = saved.accounts.find((x) => x.id === id);
+  assert.equal(a.institution, 'Example Bank');
+  assert.equal(a.last4, '0042');
+  const again = rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id, name: 'Renamed', type: 'checking' } }).accounts.find((x) => x.id === id);
+  assert.equal(again.last4, '0042');
+  assert.equal(again.institution, 'Example Bank');
+  for (const last4 of ['12345', '00000000', 'abcd', '12 4']) {
+    expectError(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id, name: 'Renamed', type: 'checking', last4 } }, 'validation_failed', 400);
+  }
+  const cleared = rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id, name: 'Renamed', type: 'checking', last4: null } }).accounts.find((x) => x.id === id);
+  assert.equal(cleared.last4, null);
+});
+
+test('a statement balance is saved per account and day, replaced on the same day, and only by members', (ctx) => {
+  const main = ctx.account('Main account');
+  const first = rpc(ctx.db, ctx.alice, 'fulla_balance_snapshot_save', { p_household_id: ctx.hh, p_snapshot: { account_id: main, as_of: '2030-01-31', balance_minor: 12345 } });
+  const second = rpc(ctx.db, ctx.alice, 'fulla_balance_snapshot_save', { p_household_id: ctx.hh, p_snapshot: { account_id: main, as_of: '2030-01-31', balance_minor: 9999 } });
+  assert.equal(first.id, second.id);
+  rpc(ctx.db, ctx.alice, 'fulla_balance_snapshot_save', { p_household_id: ctx.hh, p_snapshot: { account_id: main, as_of: '2030-02-28', balance_minor: -500 } });
+  const list = rpc(ctx.db, ctx.alice, 'fulla_balance_snapshots', { p_household_id: ctx.hh });
+  assert.deepEqual(list.map((s) => [s.as_of, s.balance_minor]), [['2030-01-31', 9999], ['2030-02-28', -500]]);
+  expectError(ctx.db, ctx.alice, 'fulla_balance_snapshot_save', { p_household_id: ctx.hh, p_snapshot: { account_id: uuid(), as_of: '2030-01-31', balance_minor: 1 } }, 'validation_failed', 400);
+  expectError(ctx.db, ctx.alice, 'fulla_balance_snapshot_save', { p_household_id: ctx.hh, p_snapshot: { account_id: main, as_of: 'soon', balance_minor: 1 } }, 'validation_failed', 400);
+  const mallory = newUser(ctx.db, 'mallory@example.com');
+  rpcFails(ctx.db, mallory, 'fulla_balance_snapshots', { p_household_id: ctx.hh });
+  rpcFails(ctx.db, mallory, 'fulla_balance_snapshot_save', { p_household_id: ctx.hh, p_snapshot: { account_id: main, as_of: '2030-01-31', balance_minor: 1 } });
+});
+
+test('balance snapshots are not readable or writable directly, cannot be deleted, and go with the household', (ctx) => {
+  const main = ctx.account('Main account');
+  rpc(ctx.db, ctx.alice, 'fulla_balance_snapshot_save', { p_household_id: ctx.hh, p_snapshot: { account_id: main, as_of: '2030-01-31', balance_minor: 100 } });
+  assert.equal(ctx.db.as(ctx.alice, 'select count(*) from fulla.balance_snapshots;', { expectFailure: true }).ok, false);
+  assert.equal(ctx.db.as(ctx.alice, `insert into fulla.balance_snapshots (household_id, account_id, as_of, balance_minor) values (${h.literal(ctx.hh)}, ${h.literal(main)}, '2030-03-01', 1);`, { expectFailure: true }).ok, false);
+  assert.equal(ctx.db.admin('delete from fulla.balance_snapshots;', { expectFailure: true }).ok, false);
+  ctx.db.admin(`select fulla.erase_household(${h.literal(ctx.hh)});`);
+  assert.equal(ctx.db.admin('select count(*) from fulla.balance_snapshots;').out, '0');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════

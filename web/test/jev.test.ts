@@ -120,7 +120,10 @@ describe("asking Jev (mocked)", () => {
   const item = { id: "t1", date: "2030-03-02", description: "Interac e-Transfer® Out to Jane Example", amount_minor: 5000, direction: "out" as const };
 
   it("posts the scrubbed state and the question set, with the key only in the header", async () => {
-    const f = vi.fn(async (...args: [string, RequestInit]) => void args || new Response(JSON.stringify({ answers: answers("Transfers", "P2P Transfer", 1) }), { status: 200 }));
+    const f = vi.fn(async (...args: [string, RequestInit]) => {
+      void args;
+      return new Response(JSON.stringify({ answers: answers("Transfers", "P2P Transfer", 1) }), { status: 200 });
+    });
     const r = await askJev([item], { TYPESAFE_API_KEY: KEY }, f as unknown as typeof fetch);
     expect(r.results.t1).toMatchObject({ parent: "Transfers", subcategory: "P2P Transfer", review: false });
     const [url, init] = f.mock.calls[0];

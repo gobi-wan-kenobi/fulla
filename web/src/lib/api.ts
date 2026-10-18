@@ -65,6 +65,9 @@ export const api = {
   configGet: (householdId: string) => call<Config>("fulla_config_get", { p_household_id: householdId }),
 
   accountUpsert: (householdId: string, account: Account) => call<Config>("fulla_account_upsert", { p_household_id: householdId, p_account: account }),
+  /** A statement's closing balance for one of the household's accounts (statements only, for now). */
+  balanceSnapshotSave: (householdId: string, snapshot: { account_id: string; as_of: string; balance_minor: number }) =>
+    call<{ id: string }>("fulla_balance_snapshot_save", { p_household_id: householdId, p_snapshot: snapshot }),
   categoryUpsert: (householdId: string, category: Category) => call<Config>("fulla_category_upsert", { p_household_id: householdId, p_category: category }),
   ruleUpsert: (householdId: string, rule: CategorizationRule) => call<Config>("fulla_rule_upsert", { p_household_id: householdId, p_rule: rule }),
   importProfileUpsert: (householdId: string, profile: SavedImportProfile) =>

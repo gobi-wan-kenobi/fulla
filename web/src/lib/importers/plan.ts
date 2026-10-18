@@ -115,14 +115,16 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
   }
 
   const newAccounts = new Map<string, Account>();
-  const accountFor = (name: string, type: Account["type"] = "other"): Account => {
+  const accountFor = (name: string, type: Account["type"] = "other", last4: string | null = null): Account => {
     const key = normalizeName(name);
-    const existing = accounts.get(key) ?? newAccounts.get(key);
+    // An account the household has with those last four digits is that account, whatever it is called.
+    const byDigits = last4 ? [...accounts.values(), ...newAccounts.values()].find((a) => a.last4 === last4 && a.type === type) : undefined;
+    const existing = byDigits ?? accounts.get(key) ?? newAccounts.get(key);
     if (existing) return existing;
     const made: Account = {
       id: accountIdFor(householdId, name), name: name.trim().slice(0, 60), type,
       opening_balance_minor: 0, opening_balance_date: null, round_up_to: null, round_up_multiplier: null,
-      sort: accounts.size + newAccounts.size, archived: false,
+      sort: accounts.size + newAccounts.size, archived: false, ...(last4 ? { last4 } : {}),
     };
     newAccounts.set(key, made);
     return made;
@@ -147,7 +149,7 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
     const name = line.bankCategory && !rule?.action.category_id && !pocket ? line.bankCategory.trim() || null : null;
     const free = !rule?.action.category_id && !rule?.action.kind && !pocket && !name;
     const known = input.knownTransfers && free ? knownTransfer(line.description, line.amountMinor) : null;
-    const counterpart = known ? accountFor(known.counterpart, known.counterpartType) : null;
+    const counterpart = known ? accountFor(known.counterpart, known.counterpartType, known.counterpartLast4 ?? null) : null;
     const transfer = known && counterpart && counterpart.id !== lineAccount ? { known, counterpart } : null;
     const owed = input.knownTransfers && free && !transfer ? knownDebt(line.description, line.amountMinor) : null;
     const owedCategory = owed ? debtCategory(categories, owed.kind) : null;

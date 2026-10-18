@@ -74,6 +74,10 @@ export interface Account {
   round_up_multiplier?: number | null;
   sort: number;
   archived: boolean;
+  /** Web: the bank, as a statement names it. */
+  institution?: string | null;
+  /** Web: the last four digits of the account number, from a statement. Never more. */
+  last4?: string | null;
 }
 
 export interface Category {

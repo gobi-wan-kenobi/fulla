@@ -7,7 +7,7 @@
 // This file only reads text already taken out of the PDF (pdf.ts does that),
 // so it is plain code with no PDF library, and every rule here has a test.
 import type { Currency } from "../money";
-import type { StatementLine } from "./types";
+import { lastFour, type StatementAccountInfo, type StatementLine } from "./types";
 
 /** One run of text on a PDF page: x and y in points from the bottom left, as PDF.js gives them. */
 export interface PdfCell {
@@ -69,6 +69,8 @@ export interface PdfStatementResult {
   balance: BalanceCheck;
   currency: string;
   period: string | null;
+  /** The account the statement is for: Wealthsimple, chequing, the number's last four digits, the closing balance and day. */
+  statement: StatementAccountInfo;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -229,5 +231,36 @@ export function readWealthsimpleChequing(pages: PdfPage[], currency: Currency): 
     },
     currency: "CAD",
     period,
+    statement: {
+      institution: "Wealthsimple",
+      type: "checking",
+      last4: accountLastFour(lines),
+      closingBalanceMinor: closing ?? rows[rows.length - 1].balance,
+      closingDate: periodEnd(period) ?? [...rows.map((r) => r.posted)].sort().pop() ?? null,
+    },
   };
+}
+
+/** "Account number: 000012345" anywhere on the statement → "2345". Only four digits leave this function. */
+function accountLastFour(lines: PdfLine[]): string | null {
+  const cells = lines.flatMap((l) => l.cells.map((c) => c.text));
+  for (let i = 0; i < cells.length; i++) {
+    const m = /account\s*(?:number|no\.?|#)\s*:?\s*([\d\s-]*)$/i.exec(cells[i]);
+    if (!m) continue;
+    const here = lastFour(m[1]);
+    if (here) return here;
+    const next = /^[\d\s-]+$/.test(cells[i + 1] ?? "") ? lastFour(cells[i + 1]) : null;
+    if (next) return next;
+  }
+  return null;
+}
+
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+/** "Sep 1 - Sep 30, 2026" → "2026-09-30"; a period across New Year ends in the year it names. */
+export function periodEnd(period: string | null): string | null {
+  const m = /-\s*([A-Za-z]{3})\s+(\d{1,2}),\s*(\d{4})$/.exec(period ?? "");
+  if (!m) return null;
+  const month = MONTHS.indexOf(m[1].toLowerCase()) + 1;
+  if (!month) return null;
+  return `${m[3]}-${String(month).padStart(2, "0")}-${m[2].padStart(2, "0")}`;
 }

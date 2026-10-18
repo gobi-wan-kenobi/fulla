@@ -2,7 +2,7 @@
 import { type Currency, parseMoney } from "../money";
 import { parseDate } from "./dates";
 import { decodeText } from "./decode";
-import type { SkippedLine, StatementLine, StatementResult } from "./types";
+import { lastFour, type SkippedLine, type StatementAccountInfo, type StatementLine, type StatementResult } from "./types";
 
 /**
  * OFX 1.x (SGML, tags often left open) and 2.x (XML). QFX, Quicken's name for
@@ -46,5 +46,28 @@ export function readOfx(bytes: Uint8Array, currency: Currency): StatementResult 
     const description = [...new Set([tag(block, "NAME"), tag(block, "MEMO")].filter((s): s is string => !!s))].join(" · ");
     lines.push({ date, amountMinor: amount, description, bankId: tag(block, "FITID") });
   }
-  return { lines, skipped };
+  return { lines, skipped, statement: ofxAccount(text, currency) };
+}
+
+const OFX_TYPES: Record<string, StatementAccountInfo["type"]> = { CHECKING: "checking", SAVINGS: "savings", MONEYMRKT: "savings", CREDITLINE: "other" };
+
+/** The account an OFX file is for: <FI><ORG>, the account type, the last four of <ACCTID>, and <LEDGERBAL>. */
+export function ofxAccount(text: string, currency: Currency): StatementAccountInfo | null {
+  const card = /<CCACCTFROM>/i.test(text);
+  const from = /<(?:BANKACCTFROM|CCACCTFROM)>([\s\S]*?)(?:<\/(?:BANKACCTFROM|CCACCTFROM)>|<BANKTRANLIST>)/i.exec(text)?.[1] ?? "";
+  const last4 = lastFour(tag(from, "ACCTID"));
+  const acctType = tag(from, "ACCTTYPE")?.toUpperCase() ?? "";
+  const ledger = /<LEDGERBAL>([\s\S]*?)(?:<\/LEDGERBAL>|<AVAILBAL>|<\/STMTRS>|<\/CCSTMTRS>)/i.exec(text)?.[1] ?? "";
+  const raw = tag(ledger, "BALAMT");
+  const asOf = tag(ledger, "DTASOF");
+  const balance = raw ? parseMoney(raw, currency, raw.includes(",") && !raw.includes(".") ? "comma" : "dot") : null;
+  const org = tag(text, "ORG");
+  if (!last4 && balance === null && !org) return null;
+  return {
+    institution: org ? org.slice(0, 40) : null,
+    type: card ? "credit_card" : OFX_TYPES[acctType] ?? (acctType ? "other" : null),
+    last4,
+    closingBalanceMinor: balance,
+    closingDate: asOf ? parseDate(asOf.slice(0, 8), "yyyyMMdd") : null,
+  };
 }

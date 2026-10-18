@@ -15,6 +15,8 @@ import {
 } from "@/lib/importers";
 import { loadPdfJs } from "@/lib/importers/pdfBrowser";
 import { categoriesFor } from "@/lib/ledger";
+import { digitsDiffer, findStatementAccount, linkedAccount, proposedStatementAccount } from "@/lib/statementAccount";
+import { matchTransfers } from "@/lib/transferMatch";
 import { activeMembers, isCategorised, type Account, type Category, type Config, type Transaction } from "@/lib/model";
 import { currencyOf, formatMoney } from "@/lib/money";
 import type { LocalRow } from "@/lib/sync";
@@ -43,7 +45,7 @@ const PDF_PROBLEMS: Record<PdfProblem, string> = {
 export function ImportScreen({ config, rows, onImport, onConfig }: {
   config: Config;
   rows: LocalRow[];
-  onImport: (txs: Transaction[], accounts: Account[], categories: Category[]) => Promise<number>;
+  onImport: (txs: Transaction[], accounts: Account[], categories: Category[], updates?: Transaction[]) => Promise<number>;
   onConfig: (c: Config) => void;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
@@ -57,7 +59,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
   const [pdfProblem, setPdfProblem] = useState<PdfProblem | null>(null);
   const [readingPdf, setReadingPdf] = useState(false);
   const [acceptMismatch, setAcceptMismatch] = useState(false);
-  const accounts = config.accounts.filter((a) => !a.archived);
+  const accounts = useMemo(() => config.accounts.filter((a) => !a.archived), [config.accounts]);
   const [account, setAccount] = useState<string | null>(accounts[0]?.id ?? null);
   const [profile, setProfile] = useState<ImportProfile | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
@@ -122,7 +124,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
 
   const result: StatementResult | null = useMemo(() => {
     if (!bytes) return null;
-    if (format === "pdf") return pdf ? { lines: pdf.lines, skipped: [] } : null;
+    if (format === "pdf") return pdf ? { lines: pdf.lines, skipped: [], statement: pdf.statement ?? null } : null;
     try {
       if (format === "ofx") return readOfx(bytes, currency);
       if (format === "qif") return readQif(bytes, currency, qifDate);
@@ -132,6 +134,21 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
     }
   }, [bytes, format, profile, qifDate, currency, pdf]);
   const deduped = useMemo(() => (result ? dropRepeatedBankIds(result.lines) : null), [result]);
+
+  // The account the statement names (bank, kind, last four digits): the household's, or a new one to confirm.
+  const info = result?.statement ?? null;
+  const statementMatch = useMemo(() => findStatementAccount(accounts, info), [accounts, info]);
+  const proposedAccount = useMemo(
+    () => (info?.last4 && !statementMatch ? proposedStatementAccount(config.household.id, config.accounts, info) : null),
+    [info, statementMatch, config.household.id, config.accounts],
+  );
+  const infoKey = info ? `${info.institution}|${info.type}|${info.last4}` : "";
+  useEffect(() => {
+    if (statementMatch) setAccount(statementMatch.id);
+    else if (proposedAccount) setAccount(proposedAccount.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [infoKey, fileName]);
+  const chosenAccount = accounts.find((a) => a.id === account) ?? (proposedAccount?.id === account ? proposedAccount : null);
 
   // Android falls back to the first category (Housing on a server-created household, which
   // has no "both" category). The web ends with Other and Other income: what no rule, known
@@ -244,31 +261,60 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
     }
   }
 
+  /** The rows the import writes: each line as sorted, with your changes and the categorizer's answers. */
+  function sortedRows(): { txs: Transaction[]; modelAccounts: Map<string, Account> } {
+    const modelAccounts = new Map<string, Account>();
+    const txs = fresh.map((p) => {
+      const t = p.transaction;
+      const chosen = overrides[t.id];
+      if (chosen) {
+        const c = config.categories.find((k) => k.id === chosen);
+        return { ...t, category_id: chosen, recurrence: c?.fixed ? ("fixed" as const) : t.recurrence };
+      }
+      const guess = p.source === "fallback" ? modelGuess(t, p.line.description) : null;
+      if (!guess) return p.source === "fallback" && toReview(t) ? withTag(t, REVIEW_TAG) : t;
+      if (guess.category === null) {
+        if (!config.accounts.some((a) => a.id === guess.transfer.id)) modelAccounts.set(guess.transfer.id, guess.transfer);
+        return asTransfer(t, guess);
+      }
+      return { ...t, category_id: guess.category.id, recurrence: guess.fixed ? ("fixed" as const) : t.recurrence };
+    });
+    return { txs, modelAccounts };
+  }
+  /** Transfers matched to the other statement's line (transferMatch.ts), on every import. */
+  function matched(txs: Transaction[], extra: Account[]) {
+    return matchTransfers({
+      accountId: account ?? "", fresh: txs, existing: rows.map((r) => r.tx),
+      accounts: [...config.accounts, ...createdAccounts, ...extra, ...(proposedAccount ? [proposedAccount] : [])],
+    });
+  }
+  const preview = account && fresh.length > 0 ? matched(sortedRows().txs, []) : null;
+
   async function runImport() {
     setBusy(true);
     setError(null);
     try {
-      const modelAccounts = new Map<string, Account>();
-      const txs = fresh.map((p) => {
-        const t = p.transaction;
-        const chosen = overrides[t.id];
-        if (chosen) {
-          const c = config.categories.find((k) => k.id === chosen);
-          return { ...t, category_id: chosen, recurrence: c?.fixed ? ("fixed" as const) : t.recurrence };
-        }
-        const guess = p.source === "fallback" ? modelGuess(t, p.line.description) : null;
-        if (!guess) return p.source === "fallback" && toReview(t) ? withTag(t, REVIEW_TAG) : t;
-        if (guess.category === null) {
-          if (!config.accounts.some((a) => a.id === guess.transfer.id)) modelAccounts.set(guess.transfer.id, guess.transfer);
-          return asTransfer(t, guess);
-        }
-        return { ...t, category_id: guess.category.id, recurrence: guess.fixed ? ("fixed" as const) : t.recurrence };
-      });
-      const used = new Set(txs.map((t) => t.category_id).filter(Boolean));
-      const accountsUsed = new Set(txs.flatMap((t) => [t.account_id, t.to_account_id]).filter(Boolean));
+      const { txs, modelAccounts } = sortedRows();
+      const m = matched(txs, [...modelAccounts.values()]);
+      const used = new Set(m.insert.map((t) => t.category_id).filter(Boolean));
+      const accountsUsed = new Set([...m.insert, ...m.update].flatMap((t) => [t.account_id, t.to_account_id]).filter(Boolean));
       const made = new Map(createdAccounts.map((a) => [a.id, a]));
       for (const [id, a] of modelAccounts) if (!made.has(id)) made.set(id, a);
-      const n = await onImport(txs, [...made.values()].filter((a) => accountsUsed.has(a.id)), createdCategories.filter((c) => used.has(c.id)));
+      const write = [...made.values()].filter((a) => accountsUsed.has(a.id));
+      // The statement's account first: new, or the chosen one given the statement's bank and digits.
+      if (chosenAccount && proposedAccount?.id === chosenAccount.id) write.unshift(chosenAccount);
+      else if (chosenAccount) {
+        const linked = linkedAccount(chosenAccount, info);
+        if (linked) write.unshift(linked);
+      }
+      const n = await onImport(m.insert, write, createdCategories.filter((c) => used.has(c.id)), m.update);
+      if (account && info?.closingBalanceMinor != null && info.closingDate) {
+        try {
+          await api.balanceSnapshotSave(config.household.id, { account_id: account, as_of: info.closingDate, balance_minor: info.closingBalanceMinor });
+        } catch {
+          // The balance is kept for later charts; the import itself is done.
+        }
+      }
       setDone(n);
       setBytes(null);
     } catch (e) {
@@ -343,8 +389,23 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
           )}
           <Section>Into account</Section>
           <div className="flex gap-2 px-5 overflow-x-auto pb-1">
+            {proposedAccount && <Chip label={`New: ${proposedAccount.name}`} selected={proposedAccount.id === account} onClick={() => setAccount(proposedAccount.id)} testId="account-new" />}
             {accounts.map((a) => <Chip key={a.id} label={a.name} selected={a.id === account} onClick={() => setAccount(a.id)} testId={`account-${a.name}`} />)}
           </div>
+          {info?.last4 && statementMatch && statementMatch.id === account && (
+            <p className="t-secondary text-ink-muted px-5" data-testid="account-matched">This statement is for {statementMatch.name} (••{info.last4}).</p>
+          )}
+          {proposedAccount && proposedAccount.id === account && (
+            <p className="t-secondary text-ink-muted px-5" data-testid="account-proposed">
+              No account of yours ends in {info?.last4}: importing makes {proposedAccount.name}. Or pick the account it belongs to; it will remember these digits.
+            </p>
+          )}
+          {digitsDiffer(chosenAccount, info) && (
+            <p className="t-secondary text-warning px-5" data-testid="account-digits-differ">That account ends in {chosenAccount?.last4}; this statement is for ••{info?.last4}.</p>
+          )}
+          {!info?.last4 && format !== "qif" && (
+            <p className="t-secondary text-ink-muted px-5">The file does not say which account it is for: pick it.</p>
+          )}
           {format === "csv" && profile && (
             <>
               {profiles.length > 0 && (
@@ -419,6 +480,15 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
             ].filter(Boolean);
             return parts.length > 0 ? <p className="t-secondary text-ink-muted px-5" data-testid="sorted-summary">Sorted: {parts.join(" · ")}{asking > 0 ? " · asking the categorizer…" : ""}</p> : null;
           })()}
+          {preview && (preview.matched > 0 || preview.unmatched > 0 || preview.joined > 0) && (
+            <p className="t-secondary text-ink-muted px-5" data-testid="transfer-match">
+              {[
+                preview.matched > 0 && `${preview.matched} matched to the other account's statement (counted once)`,
+                preview.joined > 0 && `${preview.joined} earlier transfers joined`,
+                preview.unmatched > 0 && `${preview.unmatched} transfers not matched yet (History → Review, until the other statement comes in)`,
+              ].filter(Boolean).join(" · ")}
+            </p>
+          )}
           {createdAccounts.length > 0 && <p className="t-secondary text-ink-muted px-5">New accounts: {createdAccounts.map((a) => a.name).join(", ")}</p>}
           {brandNew.length > 0 && <p className="t-secondary text-ink-muted px-5">New categories: {brandNew.map((c) => c.name).join(", ")}</p>}
           {result && result.skipped.length > 0 && <p className="t-secondary text-warning px-5">{result.skipped.length} {result.skipped.length === 1 ? "line" : "lines"} skipped (no date or amount)</p>}
