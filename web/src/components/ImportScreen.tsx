@@ -90,8 +90,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
         setFileName(file.name);
         setFormat("pdf");
         setProfileId(null);
-        const ws = accounts.find((a) => /wealthsimple/i.test(a.name) && /chequ|check/i.test(a.name));
-        if (ws) setAccount(ws.id);
+        // The account is chosen by the statement's last four digits (statementAccount.ts), never by name.
         setBytes(read);
       } catch (e) {
         setPdfProblem(e instanceof PdfStatementError ? e.problem : "unreadable");

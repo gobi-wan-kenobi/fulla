@@ -12,17 +12,17 @@ import { normalizeName } from "./text";
 const same = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && normalizeName(a) === normalizeName(b);
 
 /**
- * The account the statement is for: same last four digits and kind of
- * account, and the same bank when both say. Null when none is, or when the
- * statement does not show its number.
+ * The account the statement is for: the one with the statement's last four
+ * digits. The digits decide; when two accounts share them, the same bank and
+ * then the same kind of account break the tie. The account's name never
+ * counts (a person may call their chequing "Cash"). Null when no account has
+ * those digits, or the statement does not show them.
  */
 export function findStatementAccount(accounts: Account[], info: StatementAccountInfo | null | undefined): Account | null {
   if (!info?.last4) return null;
-  const candidates = accounts.filter((a) => !a.archived && a.last4 === info.last4 &&
-    (!info.institution || !a.institution || same(a.institution, info.institution)) &&
-    (!info.type || a.type === info.type || a.type === "other"));
-  candidates.sort((a, b) => Number(same(b.institution, info.institution)) - Number(same(a.institution, info.institution)) ||
-    Number(b.type === info.type) - Number(a.type === info.type));
+  const candidates = accounts.filter((a) => !a.archived && a.last4 === info.last4);
+  const score = (a: Account) => (same(a.institution, info.institution) ? 2 : 0) + (info.type && a.type === info.type ? 1 : 0);
+  candidates.sort((a, b) => score(b) - score(a) || a.sort - b.sort);
   return candidates[0] ?? null;
 }
 
@@ -48,7 +48,7 @@ export function proposedStatementAccount(householdId: string, accounts: Account[
 /**
  * The chosen account with the statement's bank and digits filled in where it
  * has none; null when there is nothing to add (or it already has other digits:
- * those are never overwritten).
+ * those are never overwritten). Its name and kind are never changed.
  */
 export function linkedAccount(account: Account, info: StatementAccountInfo | null | undefined): Account | null {
   if (!info?.last4 || account.last4) return null;

@@ -118,7 +118,8 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
   const accountFor = (name: string, type: Account["type"] = "other", last4: string | null = null): Account => {
     const key = normalizeName(name);
     // An account the household has with those last four digits is that account, whatever it is called.
-    const byDigits = last4 ? [...accounts.values(), ...newAccounts.values()].find((a) => a.last4 === last4 && a.type === type) : undefined;
+    const withDigits = last4 ? [...accounts.values(), ...newAccounts.values()].filter((a) => !a.archived && a.last4 === last4) : [];
+    const byDigits = withDigits.find((a) => a.type === type) ?? withDigits[0];
     const existing = byDigits ?? accounts.get(key) ?? newAccounts.get(key);
     if (existing) return existing;
     const made: Account = {

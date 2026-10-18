@@ -57,12 +57,19 @@ describe("what a statement says about its account", () => {
 
   const info = { institution: "Example Bank", type: "checking" as const, last4: "1234", closingBalanceMinor: 100, closingDate: "2030-01-31" };
 
-  it("finds the household's account by bank, kind and last four digits", () => {
+  it("finds the household's account by its last four digits; bank and kind only break ties, the name never counts", () => {
     const mine = acct(BANK_A, "Everyday", "checking", { institution: "Example Bank", last4: "1234" });
     const other = acct(BANK_B, "Savings", "savings", { institution: "Example Bank", last4: "1234" });
     expect(findStatementAccount([other, mine], info)?.id).toBe(BANK_A);
-    expect(findStatementAccount([acct(BANK_A, "x", "checking", { institution: "Other Bank", last4: "1234" })], info)).toBeNull();
+    // Same digits at another bank or of another kind: still that account, when it is the only one with them.
+    expect(findStatementAccount([acct(BANK_A, "x", "cash", { institution: "Other Bank", last4: "1234" })], info)?.id).toBe(BANK_A);
     expect(findStatementAccount([acct(BANK_A, "x", "checking", { last4: "1234" })], info)?.id).toBe(BANK_A);
+    // The bank breaks a tie before the kind does.
+    const sameBankOtherKind = acct(BANK_B, "Cash", "cash", { institution: "Example Bank", last4: "1234" });
+    const otherBankSameKind = acct(CARD, "Chequing", "checking", { institution: "Other Bank", last4: "1234" });
+    expect(findStatementAccount([otherBankSameKind, sameBankOtherKind], info)?.id).toBe(BANK_B);
+    // A name that looks right without the digits is not a match.
+    expect(findStatementAccount([acct(BANK_A, "Example Bank chequing", "checking", { institution: "Example Bank" })], info)).toBeNull();
     expect(findStatementAccount([mine], { ...info, last4: "9999" })).toBeNull();
     expect(findStatementAccount([mine], { ...info, last4: null })).toBeNull();
     expect(findStatementAccount([{ ...mine, archived: true }], info)).toBeNull();
@@ -74,9 +81,9 @@ describe("what a statement says about its account", () => {
     expect(proposedStatementAccount(HOUSEHOLD, [], info).id).toBe(proposedStatementAccount(HOUSEHOLD, [], info).id);
   });
 
-  it("gives a chosen account the statement's digits, never replacing others", () => {
-    const plain = acct(BANK_A, "Everyday", "checking");
-    expect(linkedAccount(plain, info)).toMatchObject({ last4: "1234", institution: "Example Bank" });
+  it("gives a chosen account the statement's digits, never replacing others, its name or its kind", () => {
+    const plain = acct(BANK_A, "Cash", "cash");
+    expect(linkedAccount(plain, info)).toMatchObject({ name: "Cash", type: "cash", last4: "1234", institution: "Example Bank" });
     expect(linkedAccount({ ...plain, last4: "5555" }, info)).toBeNull();
     expect(digitsDiffer({ ...plain, last4: "5555" }, info)).toBe(true);
     expect(digitsDiffer(plain, info)).toBe(false);
