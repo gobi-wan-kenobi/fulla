@@ -244,6 +244,8 @@ test('a stranger gets not_member from every function that takes a household', (c
     ['fulla_member_balances', { p_household_id: hh }],
     ['fulla_balance_snapshot_save', { p_household_id: hh, p_snapshot: {} }],
     ['fulla_balance_snapshots', { p_household_id: hh }],
+    ['fulla_category_examples_save', { p_household_id: hh, p_examples: [] }],
+    ['fulla_category_examples', { p_household_id: hh }],
   ];
   const covered = new Set(calls.map((c) => c[0]));
   const all = ctx.db.admin(`
@@ -1851,6 +1853,58 @@ test('balance snapshots are not readable or writable directly, cannot be deleted
   assert.equal(ctx.db.admin('delete from fulla.balance_snapshots;', { expectFailure: true }).ok, false);
   ctx.db.admin(`select fulla.erase_household(${h.literal(ctx.hh)});`);
   assert.equal(ctx.db.admin('select count(*) from fulla.balance_snapshots;').out, '0');
+});
+
+// Labelled category examples (0027)
+// ═════════════════════════════════════════════════════════════════════════════
+
+test('new households start with Insurance (fixed, four kinds) and Interest income (0026)', (ctx) => {
+  const cats = rpc(ctx.db, ctx.alice, 'fulla_config_get', { p_household_id: ctx.hh }).categories;
+  const ins = cats.find((c) => c.name === 'Insurance' && c.parent_id === null);
+  assert.ok(ins && ins.fixed);
+  assert.deepEqual(cats.filter((c) => c.parent_id === ins.id).map((c) => [c.name, c.fixed]).sort(),
+    [['Auto insurance', true], ['Health insurance', true], ['Home insurance', true], ['Life insurance', true]]);
+  assert.equal(cats.find((c) => c.name === 'Interest').applies_to, 'income');
+});
+
+test('a category change is saved as a scrubbed example with labels, only by members', (ctx) => {
+  const cats = rpc(ctx.db, ctx.alice, 'fulla_config_get', { p_household_id: ctx.hh }).categories;
+  const other = cats.find((c) => c.name === 'Other').id;
+  const life = cats.find((c) => c.name === 'Life insurance').id;
+  const ex = { description: 'Pre-authorized Debit to EXAMPLEINS-LIFE', direction: 'out', amount_band: '$20-$50', day_of_month: 15,
+    from_category_id: other, from_source: 'jev', from_confidence: 0.42, to_category_id: life, via: 'review' };
+  assert.deepEqual(rpc(ctx.db, ctx.alice, 'fulla_category_examples_save', { p_household_id: ctx.hh, p_examples: [ex, { ...ex, from_category_id: null, from_source: 'none', from_confidence: null, via: 'edit' }] }), { saved: 2 });
+  const list = rpc(ctx.db, ctx.alice, 'fulla_category_examples', { p_household_id: ctx.hh });
+  assert.equal(list.length, 2);
+  const jev = list.find((x) => x.from_source === 'jev');
+  assert.equal(jev.from_label, 'Other');
+  assert.equal(jev.to_label, 'Insurance › Life insurance');
+  assert.ok(Math.abs(jev.from_confidence - 0.42) < 1e-6);
+  assert.equal(jev.household_id, undefined);
+  for (const bad of [
+    { ...ex, description: 'Payment to card 4500 0000' },
+    { ...ex, description: 'Paid someone@example.com' },
+    { ...ex, description: '' },
+    { ...ex, direction: 'sideways' },
+    { ...ex, from_source: 'magic' },
+    { ...ex, to_category_id: uuid() },
+    { ...ex, from_confidence: 2 },
+    { ...ex, via: 'api' },
+  ]) expectError(ctx.db, ctx.alice, 'fulla_category_examples_save', { p_household_id: ctx.hh, p_examples: [bad] }, 'validation_failed', 400);
+  const mallory = newUser(ctx.db, 'mallory@example.com');
+  rpcFails(ctx.db, mallory, 'fulla_category_examples', { p_household_id: ctx.hh });
+  rpcFails(ctx.db, mallory, 'fulla_category_examples_save', { p_household_id: ctx.hh, p_examples: [ex] });
+});
+
+test('category examples are not readable or writable directly, cannot be deleted, and go with the household', (ctx) => {
+  const cats = rpc(ctx.db, ctx.alice, 'fulla_config_get', { p_household_id: ctx.hh }).categories;
+  const other = cats.find((c) => c.name === 'Other').id;
+  rpc(ctx.db, ctx.alice, 'fulla_category_examples_save', { p_household_id: ctx.hh, p_examples: [{ description: 'EXAMPLE SHOP', direction: 'out', amount_band: 'under $20', to_category_id: other, from_source: 'none', via: 'bulk' }] });
+  assert.equal(ctx.db.as(ctx.alice, 'select count(*) from fulla.category_examples;', { expectFailure: true }).ok, false);
+  assert.equal(ctx.db.as(ctx.alice, `insert into fulla.category_examples (household_id, description, direction, amount_band, from_source, to_category_id, to_label, via) values (${h.literal(ctx.hh)}, 'x', 'out', 'y', 'none', ${h.literal(other)}, 'Other', 'edit');`, { expectFailure: true }).ok, false);
+  assert.equal(ctx.db.admin('delete from fulla.category_examples;', { expectFailure: true }).ok, false);
+  ctx.db.admin(`select fulla.erase_household(${h.literal(ctx.hh)});`);
+  assert.equal(ctx.db.admin('select count(*) from fulla.category_examples;').out, '0');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════

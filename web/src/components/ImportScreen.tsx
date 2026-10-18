@@ -5,7 +5,8 @@ import { api, categorizer } from "@/lib/api";
 import { fallbackCategory } from "@/lib/categorize";
 import { type ModelAnswer, modelCategory, modelTransfer } from "@/lib/categorizer";
 import { history, howOftenSeen } from "@/lib/categorize/facts";
-import { REVIEW_TAG, withTag } from "@/lib/review";
+import { REVIEW_TAG, withTag, withoutTag } from "@/lib/review";
+import { examplesFor, sendExamples, sortedBy } from "@/lib/examples";
 import { randomId } from "@/lib/ids";
 import {
   DATE_FORMATS, type ImportProfile, type PdfProblem, type PdfStatementResult, type SavedProfile, type StatementFormat,
@@ -187,7 +188,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
     ...fresh.map((p) => ({ description: p.line.description, date: p.line.date, amountMinor: p.line.amountMinor })),
   ]), [rows, fresh]);
   const unknown = useMemo(
-    () => fresh.filter((p) => p.source === "fallback" && isCategorised(p.transaction.kind) && !asked.current.has(p.transaction.id)),
+    () => fresh.filter((p) => p.source === "fallback" && !p.personReview && isCategorised(p.transaction.kind) && !asked.current.has(p.transaction.id)),
     [fresh],
   );
   useEffect(() => {
@@ -261,24 +262,34 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
   }
 
   /** The rows the import writes: each line as sorted, with your changes and the categorizer's answers. */
-  function sortedRows(): { txs: Transaction[]; modelAccounts: Map<string, Account> } {
+  function sortedRows(): { txs: Transaction[]; modelAccounts: Map<string, Account>; examples: { before: Transaction; after: Transaction }[] } {
     const modelAccounts = new Map<string, Account>();
-    const txs = fresh.map((p) => {
+    const examples: { before: Transaction; after: Transaction }[] = [];
+    // What Fulla would write for a line, marked with how it was sorted (examples.ts).
+    const auto = (p: (typeof fresh)[number]): Transaction => {
       const t = p.transaction;
-      const chosen = overrides[t.id];
-      if (chosen) {
-        const c = config.categories.find((k) => k.id === chosen);
-        return { ...t, category_id: chosen, recurrence: c?.fixed ? ("fixed" as const) : t.recurrence };
-      }
-      const guess = p.source === "fallback" ? modelGuess(t, p.line.description) : null;
-      if (!guess) return p.source === "fallback" && toReview(t) ? withTag(t, REVIEW_TAG) : t;
+      const answer = answers[t.id];
+      if (p.source !== "fallback") return sortedBy(t, p.source === null ? "none" : p.source);
+      const guess = modelGuess(t, p.line.description);
+      const by = answer?.by === "jev" ? "jev" : answer ? "model" : "none";
+      if (!guess) return sortedBy(toReview(t) ? withTag(t, REVIEW_TAG) : t, "none", answer?.confidence ?? null);
       if (guess.category === null) {
         if (!config.accounts.some((a) => a.id === guess.transfer.id)) modelAccounts.set(guess.transfer.id, guess.transfer);
         return asTransfer(t, guess);
       }
-      return { ...t, category_id: guess.category.id, recurrence: guess.fixed ? ("fixed" as const) : t.recurrence };
+      return sortedBy({ ...t, category_id: guess.category.id, recurrence: guess.fixed ? ("fixed" as const) : t.recurrence }, by, answer?.confidence ?? null);
+    };
+    const txs = fresh.map((p) => {
+      const t = p.transaction;
+      const chosen = overrides[t.id];
+      if (!chosen) return auto(p);
+      const c = config.categories.find((k) => k.id === chosen);
+      const before = auto(p);
+      const after = sortedBy({ ...withoutTag(t, REVIEW_TAG), category_id: chosen, recurrence: c?.fixed ? ("fixed" as const) : t.recurrence }, "user");
+      examples.push({ before, after });
+      return after;
     });
-    return { txs, modelAccounts };
+    return { txs, modelAccounts, examples };
   }
   /** Transfers matched to the other statement's line (transferMatch.ts), on every import. */
   function matched(txs: Transaction[], extra: Account[]) {
@@ -293,7 +304,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
     setBusy(true);
     setError(null);
     try {
-      const { txs, modelAccounts } = sortedRows();
+      const { txs, modelAccounts, examples } = sortedRows();
       const m = matched(txs, [...modelAccounts.values()]);
       const used = new Set(m.insert.map((t) => t.category_id).filter(Boolean));
       const accountsUsed = new Set([...m.insert, ...m.update].flatMap((t) => [t.account_id, t.to_account_id]).filter(Boolean));
@@ -307,6 +318,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
         if (linked) write.unshift(linked);
       }
       const n = await onImport(m.insert, write, createdCategories.filter((c) => used.has(c.id)), m.update);
+      void sendExamples(config.household.id, examplesFor(examples, "import", currency.minorUnits));
       if (account && info?.closingBalanceMinor != null && info.closingDate) {
         try {
           await api.balanceSnapshotSave(config.household.id, { account_id: account, as_of: info.closingDate, balance_minor: info.closingBalanceMinor });
@@ -467,12 +479,15 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
             const guessed = fresh.filter((p) => p.source === "fallback" && !overrides[p.transaction.id]).map((p) => modelGuess(p.transaction, p.line.description)).filter(Boolean);
             const modelled = guessed.length;
             const reviewing = fresh.filter((p) => p.source === "fallback" && !overrides[p.transaction.id] && toReview(p.transaction)).length;
+            const people = fresh.filter((p) => p.personReview && !overrides[p.transaction.id]).length;
+            const shops = fresh.filter((p) => p.source === "merchant" && !p.personReview).length;
             const moved = fresh.filter((p) => p.transaction.kind === "transfer").length + guessed.filter((g) => g!.category === null).length;
             const parts = [
               by("rule") && `${by("rule")} by your rules`,
               moved && `${moved} transfers (not spending)`,
               by("debt") && `${by("debt")} debt payments`,
-              by("merchant") && `${by("merchant")} known shops`,
+              people && `${people} e-Transfer${people === 1 ? "" : "s"} with people to review`,
+              shops > 0 && `${shops} known shops`,
               modelled && `${modelled} by the categorizer`,
               reviewing && `${reviewing} to review`,
               by("fallback") - modelled - reviewing > 0 && `${by("fallback") - modelled - reviewing} to Other`,
@@ -530,6 +545,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
                       {mismatchAt.has(i) && <span className="text-danger" data-testid="row-mismatch">· balance does not add up</span>}
                       {!overrides[t.id] && !p.alreadyImported && (
                         p.source === "rule" && p.matchedRule ? <span data-testid="by-rule">· by rule “{p.matchedRule.pattern}”</span>
+                          : p.personReview ? <span className="text-warning" data-testid="to-review-person">· to review (money with a person)</span>
                           : p.source === "merchant" ? <span data-testid="by-merchant">· known shop</span>
                           : p.source === "debt" ? <span data-testid="by-debt">· debt payment</span>
                             : p.source === "fallback" && toReview(t) ? <span className="text-warning" data-testid="to-review">· to review</span>

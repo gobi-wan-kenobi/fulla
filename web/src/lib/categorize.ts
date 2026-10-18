@@ -13,7 +13,7 @@
  * Everything here is pure, so the import, the entry screen and "apply rules
  * to what is already there" reach the same answer about the same text.
  */
-import { DEBT_KEY, type DebtKind, UNCATEGORIZED, WEB_DEFAULT_CATEGORIES } from "./defaults";
+import { DEBT_KEY, type DebtKind, INSURANCE_KEY, type InsuranceKind, UNCATEGORIZED, WEB_DEFAULT_CATEGORIES } from "./defaults";
 import { defaultKeys } from "./importers/hints";
 import { KNOWN_MERCHANTS, type KnownMerchant } from "./merchants";
 import { allows, type CategorizationRule, type Category, type TransactionKind } from "./model";
@@ -148,9 +148,37 @@ export interface Suggestion {
 }
 
 /** The known merchant's category for kind, or null. Money in from a shop is a refund (the caller decides the kind). */
-export function merchantCategory(categories: Category[], match: MerchantMatch, kind: TransactionKind): Category | null {
+export function merchantCategory(categories: Category[], match: MerchantMatch, kind: TransactionKind, description = ""): Category | null {
   const key = kind === "income" ? match.merchant.income : match.merchant.expense;
+  if (key === INSURANCE_KEY && kind !== "income") return insuranceCategory(categories, insuranceKind(description));
   return key ? categoryForKey(categories, key, kind) : null;
+}
+
+const LIFE = /\b(life|vie|vida|leben|vita)\b|rbcins life|sun life|manulife|canada life|empire life|securian/;
+const HOME = /\b(home|house|tenant|tenants|renters?|condo|property|habitation|hogar)\b/;
+const AUTO = /\b(auto|car|vehicle|motor|sonnet|belair ?direct)\b/;
+const HEALTH = /\b(health|dental|medical|drug plan|blue cross|green shield|travel medical)\b/;
+
+/** Which kind of insurance a statement line is, from its words; null when it does not say. */
+export function insuranceKind(description: string): InsuranceKind | null {
+  const s = normalizeName(description).replace(/[-_/]+/g, " ");
+  if (LIFE.test(s)) return "life_insurance";
+  if (HEALTH.test(s)) return "health_insurance";
+  if (AUTO.test(s)) return "auto_insurance";
+  if (HOME.test(s)) return "home_insurance";
+  return null;
+}
+
+const INSURANCE_SUBS = WEB_DEFAULT_CATEGORIES.find((d) => d.key === INSURANCE_KEY)?.subcategories ?? [];
+
+/** The household's Insurance subcategory for a kind (by any of the default's names), else Insurance; null without Insurance. */
+export function insuranceCategory(categories: Category[], kind: InsuranceKind | null): Category | null {
+  const parent = categoryForKey(categories, INSURANCE_KEY, "expense");
+  if (!parent) return null;
+  const sub = kind ? INSURANCE_SUBS.find((d) => d.key === kind) : undefined;
+  if (!sub) return parent;
+  const names = new Set(Object.values(sub.name).map(normalizeName));
+  return categories.find((c) => !c.archived && c.parent_id === parent.id && names.has(normalizeName(c.name))) ?? parent;
 }
 
 /**
@@ -167,7 +195,7 @@ export function suggest(description: string, kind: TransactionKind, rules: Categ
   if (owed) return { category: owed, source: "debt", fixed: true };
   const match = knownMerchant(description);
   if (match) {
-    const c = merchantCategory(categories, match, kind);
+    const c = merchantCategory(categories, match, kind, description);
     if (c) return { category: c, source: "merchant", merchant: match, fixed: !!c.fixed || !!match.merchant.fixed };
   }
   return null;

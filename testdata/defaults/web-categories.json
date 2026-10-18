@@ -82,6 +82,81 @@
           }
         }
       ]
+    },
+    {
+      "key": "insurance",
+      "applies_to": "expense",
+      "icon": "shield",
+      "color_index": 10,
+      "fixed": true,
+      "name": {
+        "en": "Insurance",
+        "es": "Seguros",
+        "fr": "Assurances",
+        "de": "Versicherungen",
+        "it": "Assicurazioni",
+        "pt": "Seguros"
+      },
+      "subcategories": [
+        {
+          "key": "life_insurance",
+          "name": {
+            "en": "Life insurance",
+            "es": "Seguro de vida",
+            "fr": "Assurance vie",
+            "de": "Lebensversicherung",
+            "it": "Assicurazione vita",
+            "pt": "Seguro de vida"
+          }
+        },
+        {
+          "key": "home_insurance",
+          "name": {
+            "en": "Home insurance",
+            "es": "Seguro del hogar",
+            "fr": "Assurance habitation",
+            "de": "Hausratversicherung",
+            "it": "Assicurazione casa",
+            "pt": "Seguro residencial"
+          }
+        },
+        {
+          "key": "auto_insurance",
+          "name": {
+            "en": "Auto insurance",
+            "es": "Seguro del coche",
+            "fr": "Assurance auto",
+            "de": "Kfz-Versicherung",
+            "it": "Assicurazione auto",
+            "pt": "Seguro automóvel"
+          }
+        },
+        {
+          "key": "health_insurance",
+          "name": {
+            "en": "Health insurance",
+            "es": "Seguro médico",
+            "fr": "Assurance santé",
+            "de": "Krankenversicherung",
+            "it": "Assicurazione sanitaria",
+            "pt": "Seguro de saúde"
+          }
+        }
+      ]
+    },
+    {
+      "key": "interest",
+      "applies_to": "income",
+      "icon": "savings",
+      "color_index": 7,
+      "name": {
+        "en": "Interest",
+        "es": "Intereses",
+        "fr": "Intérêts",
+        "de": "Zinsen",
+        "it": "Interessi",
+        "pt": "Juros"
+      }
     }
   ]
 }

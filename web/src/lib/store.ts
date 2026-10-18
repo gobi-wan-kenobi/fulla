@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { reviewed } from "./review";
+import { needsReview, reviewed } from "./review";
+import { examplesFor, sendExamples, sortedBy } from "./examples";
+import { currencyOf } from "./money";
 import { api } from "./api";
 import { randomId } from "./ids";
 import type { Account, Category, Config, Transaction } from "./model";
-import { sharedPotForNew } from "./model";
+import { isCategorised, sharedPotForNew } from "./model";
 import { type LocalRow, applyPushResult, createRow, deleteRow, editRow, mergePulled, mutationFor } from "./sync";
 
 const MAX_BATCH = 100;
@@ -75,6 +77,9 @@ export function useHousehold(householdId: string): Household {
     save(householdId, state.current);
     bump((n) => n + 1);
   }, [householdId]);
+
+  /** The household currency's minor units, for the examples' amount bands. */
+  const units = useCallback(() => currencyOf(state.current.config?.household.currency ?? "")?.minorUnits ?? 2, []);
 
   const push = useCallback(async () => {
     const pending = Object.values(state.current.rows).filter((r) => r.state === "pending");
@@ -161,12 +166,16 @@ export function useHousehold(householdId: string): Household {
     async (tx: Transaction, existing?: LocalRow) => {
       const now = new Date();
       const config = state.current.config;
-      const row = existing ? editRow(existing, reviewed(existing.tx, tx), now) : createRow(config ? sharedPotForNew(tx, config.household) : tx, now);
+      const moved = !!existing && isCategorised(tx.kind) && !!tx.category_id && tx.category_id !== existing.tx.category_id;
+      const examples = existing ? examplesFor([{ before: existing.tx, after: tx }], needsReview(existing.tx) ? "review" : "edit", units()) : [];
+      const changed = moved ? sortedBy(tx, "user") : tx;
+      const row = existing ? editRow(existing, reviewed(existing.tx, changed), now) : createRow(config ? sharedPotForNew(tx, config.household) : tx, now);
       state.current.rows[row.tx.id] = row;
       commit();
+      void sendExamples(householdId, examples);
       await sync();
     },
-    [commit, sync],
+    [commit, sync, householdId, units],
   );
 
   const deleteTransaction = useCallback(
@@ -181,15 +190,19 @@ export function useHousehold(householdId: string): Household {
   const saveTransactions = useCallback(
     async (changes: { tx: Transaction; existing: LocalRow }[]) => {
       const now = new Date();
+      const examples = [];
       for (const { tx, existing } of changes) {
         const current = state.current.rows[existing.tx.id] ?? existing;
-        state.current.rows[existing.tx.id] = editRow(current, reviewed(current.tx, tx), now);
+        const moved = isCategorised(tx.kind) && !!tx.category_id && tx.category_id !== current.tx.category_id;
+        examples.push(...examplesFor([{ before: current.tx, after: tx }], needsReview(current.tx) ? "review" : "bulk", units()));
+        state.current.rows[existing.tx.id] = editRow(current, reviewed(current.tx, moved ? sortedBy(tx, "user") : tx), now);
       }
       commit();
+      void sendExamples(householdId, examples);
       await sync();
       return changes.length;
     },
-    [commit, sync],
+    [commit, sync, householdId, units],
   );
 
   const importTransactions = useCallback(

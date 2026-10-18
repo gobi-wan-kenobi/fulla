@@ -10,7 +10,7 @@
  * Only category names are in this file: the mapping from the model's
  * taxonomy to Fulla's starting categories.
  */
-import { categoryForKey, debtCategory, isCatchAll } from "./categorize";
+import { categoryForKey, debtCategory, insuranceCategory, insuranceKind, isCatchAll } from "./categorize";
 import type { DebtKind } from "./defaults";
 import { allows, type Account, type Category, type TransactionKind } from "./model";
 import { CREDIT_CARD, OTHER_ACCOUNT, isPersonToPerson, knownDebt } from "./transfers";
@@ -101,7 +101,7 @@ const PARENTS: Record<string, string | null> = {
   "personal care": "health",
   "savings & investing": null,
   "miscellaneous fees": "other",
-  "insurance": "other",
+  "insurance": "insurance",
   "education & self-improvement": "education",
   "healthcare": "health",
   "housing": "housing",
@@ -114,6 +114,8 @@ const PARENTS: Record<string, string | null> = {
 /** Subcategories that say more than their parent. */
 const SUBCATEGORIES: Record<string, string> = {
   "salary & wages": "salary",
+  "interest & dividends": "interest",
+  "interest": "interest",
   "streaming subscriptions": "subscriptions",
   "subscriptions": "subscriptions",
   "online learning apps": "education",
@@ -143,9 +145,9 @@ export function modelKey(answer: ModelAnswer, kind: TransactionKind): string | n
   const sub = answer.subcategory ? SUBCATEGORIES[key(answer.subcategory)] : undefined;
   const parent = PARENTS[key(answer.parent)];
   if (parent === undefined || parent === null) return null;
-  if (kind === "income") return parent === "other_income" ? (sub === "salary" ? "salary" : "other_income") : null;
+  if (kind === "income") return parent === "other_income" ? (sub === "salary" || sub === "interest" ? sub : "other_income") : null;
   if (parent === "other_income") return null; // money out the model calls income: not trusted
-  return sub && sub !== "salary" ? sub : parent;
+  return sub && sub !== "salary" && sub !== "interest" ? sub : parent;
 }
 
 const STOP = new Set(["and", "or", "the", "of", "for", "a", "an", "to"]);
@@ -182,6 +184,8 @@ export function modelCategory(categories: Category[], answer: ModelAnswer, kind:
     if (/mortgage/.test(key(answer.subcategory ?? ""))) return categoryForKey(categories, "housing", kind);
     return debtCategory(categories, debtKind(answer.subcategory, description)) ?? categoryForKey(categories, "other", kind);
   }
+  if (k === "insurance") return insuranceCategory(categories, insuranceKind(description) ?? insuranceKind(answer.subcategory ?? ""));
+  if (k === "interest") return categoryForKey(categories, "interest", kind) ?? categoryForKey(categories, "other_income", kind);
   const base = categoryForKey(categories, k, kind);
   const sub = answer.subcategory;
   if (!sub) return base;

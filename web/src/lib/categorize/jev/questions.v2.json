@@ -205,17 +205,18 @@
      "excludes": "Interest paid to you (Income)"
     },
     "Insurance": {
-     "includes": "Insurance premiums: auto, home or tenant, and life.",
+     "includes": "Insurance premiums: life, home or tenant, auto, and health or dental plans.",
      "examples": [
       "Sonnet Insurance",
-      "Security National",
       "Intact",
       "TD Insurance",
       "Belairdirect",
       "Desjardins Insurance",
-      "Manulife"
+      "Manulife",
+      "Sun Life",
+      "Blue Cross"
      ],
-     "excludes": "Medical bills (Healthcare)"
+     "excludes": "Medical bills and pharmacy (Healthcare)"
     },
     "Education & Self-Improvement": {
      "includes": "Learning: online courses and certificates, tuition, books and e-books, learning apps.",
@@ -936,10 +937,27 @@
    "type": "choice",
    "instructions": {
     "question": "Within the budget category 'Insurance', which subcategory does the bank transaction in `transaction` belong to?",
-    "category": "Insurance premiums: auto, home or tenant, and life.",
+    "category": "Insurance premiums: life, home or tenant, auto, and health or dental plans.",
     "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
    },
    "criteria": {
+    "Life": {
+     "includes": "Life insurance premiums.",
+     "examples": [
+      "Manulife",
+      "Sun Life",
+      "Canada Life",
+      "Life insurance premium"
+     ]
+    },
+    "Home Insurance": {
+     "includes": "Home, tenant or condo insurance premiums.",
+     "examples": [
+      "TD Insurance home",
+      "Square One",
+      "Tenant insurance"
+     ]
+    },
     "Auto Insurance": {
      "includes": "Car insurance premiums.",
      "examples": [
@@ -949,12 +967,12 @@
       "Belairdirect"
      ]
     },
-    "Life": {
-     "includes": "Life insurance premiums.",
+    "Health Insurance": {
+     "includes": "Health, dental or travel-medical plan premiums paid by the household.",
      "examples": [
-      "Manulife",
-      "Sun Life",
-      "Canada Life"
+      "Blue Cross",
+      "Green Shield",
+      "Health plan premium"
      ]
     }
    }
@@ -1151,5 +1169,16 @@
   "Other Debt": "other_debt",
   "Credit-Card": "transfer (card bill)",
   "Credit-Card Payment": "transfer (card bill)"
+ },
+ "fulla_insurance_subcategories": {
+  "Life": "life_insurance",
+  "Home Insurance": "home_insurance",
+  "Auto Insurance": "auto_insurance",
+  "Health Insurance": "health_insurance"
+ },
+ "fulla_income_subcategories": {
+  "Salary & Wages": "salary",
+  "Interest & Dividends": "interest",
+  "*": "other_income"
  }
 }

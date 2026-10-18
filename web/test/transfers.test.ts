@@ -192,3 +192,55 @@ describe("the model's transfers", () => {
     expect(modelTransfer(a("Transfers"), "EXAMPLE", "refund")).toBeNull();
   });
 });
+
+describe("e-Transfers with people", () => {
+  it("are told apart from card purchases that only say Interac", async () => {
+    const { isTransferWithPerson, personOf } = await import("@/lib/transfers");
+    expect(isTransferWithPerson("Interac e-Transfer® Out to Example Person")).toBe(true);
+    expect(isTransferWithPerson("INTERAC PURCHASE - EXAMPLE CAFE")).toBe(false);
+    expect(personOf("Interac e-Transfer® Out to Example Person")).toBe("Example Person");
+    expect(personOf("INTERAC E-TRANSFER FROM EXAMPLE PERSON")).toBe("EXAMPLE PERSON");
+    expect(personOf("e-Transfer received from Example Person (ref 123456)")).toBe("Example Person");
+    expect(personOf("EXAMPLE GROCER")).toBeNull();
+  });
+});
+
+describe("an import with e-Transfers with people, insurance and interest", () => {
+  const INS = "00000000-0000-4000-8000-000000000401";
+  const LIFE = "00000000-0000-4000-8000-000000000402";
+  const INTEREST = "00000000-0000-4000-8000-000000000403";
+  const OTHER = "00000000-0000-4000-8000-000000000404";
+  const cats = [
+    ...config.categories,
+    category(OTHER, "Other", "expense"),
+    category(INS, "Insurance", "expense", { fixed: true }),
+    category(LIFE, "Life insurance", "expense", { parent_id: INS, fixed: true }),
+    category(INTEREST, "Interest", "income"),
+  ];
+  const names = { categories: cats, members: config.members, accounts: config.accounts };
+  const lines: StatementLine[] = [
+    { date: "2030-01-02", amountMinor: -5000, description: "Interac e-Transfer® Out to Example Person" },
+    { date: "2030-01-03", amountMinor: 2500, description: "Interac e-Transfer® Received from Example Person" },
+    { date: "2030-01-04", amountMinor: -650, description: "INTERAC PURCHASE - EXAMPLE COFFEE" },
+    { date: "2030-01-05", amountMinor: -4211, description: "Pre-authorized Debit to RBCINS-LIFE" },
+    { date: "2030-01-06", amountMinor: 12, description: "Interest earned" },
+  ];
+  it("sends e-Transfers with people to Review, and insurance and interest to their categories", async () => {
+    const { REVIEW_TAG } = await import("@/lib/review");
+    const p = plan(lines, { names, uncategorizedExpenseId: OTHER });
+    expect(p.map((x) => !!x.personReview)).toEqual([true, true, false, false, false]);
+    expect(p[0].transaction.tags).toContain(REVIEW_TAG);
+    expect(p[0].transaction.note).toContain("Example Person");
+    expect(p[2].transaction.tags).not.toContain(REVIEW_TAG);
+    expect(p[3].transaction).toMatchObject({ category_id: LIFE, recurrence: "fixed" });
+    expect(p[4].transaction.category_id).toBe(INTEREST);
+  });
+  it("leaves a person a rule sorts out of Review", async () => {
+    const { REVIEW_TAG } = await import("@/lib/review");
+    const rule = { id: "00000000-0000-4000-8000-000000000499", pattern: "Example Person", action: { category_id: LEISURE }, active: true, archived: false, sort: 0 };
+    const p = plan(lines.slice(0, 1), { names, rules: [rule] as never, uncategorizedExpenseId: OTHER });
+    expect(p[0].source).toBe("rule");
+    expect(p[0].transaction.category_id).toBe(LEISURE);
+    expect(p[0].transaction.tags).not.toContain(REVIEW_TAG);
+  });
+});

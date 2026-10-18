@@ -39,5 +39,9 @@ merchants → Jev → Other. An answer below 0.7 confidence is not applied: the 
 Other with the `fulla:review` tag and shows under History → Review. Debt Payments has
 Fulla's subcategories (Personal Loan, Line of Credit, Buy Now Pay Later, Student Loan,
 Car Loan, Other Debt); its two credit-card options mean a card bill, which is a transfer.
-These subcategories were added after the tuning round and have not been re-scored.
+Insurance maps to Fulla's fixed Insurance (Life, Home, Auto and Health insurance;
+`fulla_insurance_subcategories`), and Income › Interest & Dividends to the Interest income
+category (`fulla_income_subcategories`). e-Transfers to or from people are never sent to
+Jev: they wait in Review with the person's name, which stays in the app. These
+subcategories were added after the tuning round and have not been re-scored.
 `questions.json` (v1) is kept for reference only.

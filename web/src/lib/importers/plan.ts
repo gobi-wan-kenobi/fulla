@@ -7,7 +7,8 @@ import { importedId, sha256Hex, uuid5 } from "../ids";
 import type { Account, AppliesTo, CategorizationRule, Category, Member, Split, Transaction, TransactionKind } from "../model";
 import { type CategorySource, debtCategory, incomingKind, knownMerchant, matchRule, merchantCategory, type MerchantMatch } from "../categorize";
 import { normalizeName } from "../text";
-import { type KnownDebt, type KnownTransfer, knownDebt, knownTransfer } from "../transfers";
+import { REVIEW_TAG, withTag } from "../review";
+import { type KnownDebt, type KnownTransfer, isTransferWithPerson, knownDebt, knownTransfer } from "../transfers";
 import { defaultKeys, iconFor, synonymsOf } from "./hints";
 import type { StatementLine } from "./types";
 
@@ -25,6 +26,8 @@ export interface ProposedTransaction {
   matchedTransfer?: KnownTransfer | null;
   /** Web only: the debt repayment pattern that put this line in Debt payments (transfers.ts), when one did. */
   matchedDebt?: KnownDebt | null;
+  /** Money to or from a person, waiting in Review (marked with the review tag). */
+  personReview?: boolean;
   /** The household already holds a row with this id: importing again changes nothing. */
   alreadyImported: boolean;
   /** A category this line needs written first: new, or existing and widened to both kinds. */
@@ -220,7 +223,7 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
     const payer = (line.payer ? members.get(normalizeName(line.payer))?.id : undefined) ?? input.payerMemberId;
     const ruled = r.rule?.action.category_id ?? null;
     const owed = !ruled && !category && r.debt && kind === "expense" ? r.debt.category : null;
-    const known = !ruled && !category && !owed && r.merchant && kind !== "transfer" ? merchantCategory(categories, r.merchant, kind) : null;
+    const known = !ruled && !category && !owed && r.merchant && kind !== "transfer" ? merchantCategory(categories, r.merchant, kind, r.line.description) : null;
     const chosen = ruled ?? category?.id ?? owed?.id ?? known?.id ?? null;
     const source: CategorySource | null =
       kind === "transfer" ? null : ruled ? "rule" : category ? "file" : owed ? "debt" : known ? "merchant" : "fallback";
@@ -253,8 +256,13 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
         paid_by_member_id: payer, split: input.defaultSplit,
       };
     }
+    // Money to or from a person: what it was for is the household's to say. It waits in Review, the
+    // person's name in its note, until someone sorts it (and a rule for that person keeps it sorted).
+    const personReview = kind !== "transfer" && source !== "rule" && source !== "file" && isTransferWithPerson(line.description);
+    if (personReview) tx = withTag(tx, REVIEW_TAG);
     const used = new Set([tx.account_id, tx.to_account_id].filter(Boolean));
     return {
+      personReview,
       transaction: tx, line, matchedRule: r.rule, source, matchedMerchant: source === "merchant" ? r.merchant : null,
       matchedTransfer: r.transfer?.known ?? null, matchedDebt: source === "debt" ? r.debt?.known ?? null : null, alreadyImported: input.existingIds.has(id), newCategory: toWrite,
       newAccounts: [...newAccounts.values()].filter((a) => used.has(a.id)),

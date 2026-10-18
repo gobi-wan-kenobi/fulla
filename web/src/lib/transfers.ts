@@ -48,6 +48,26 @@ const PERSONAL_LENDERS =
 const CONSUMER_LENDERS = new RegExp(`${BNPL.source}|${PERSONAL_LENDERS.source}`);
 const PERSON_TO_PERSON = /\b(e ?-?transfer|etransfer|interac|email money|zelle|venmo|cash ?app|paypal|wise|remitly|western union|moneygram)\b/;
 
+const TO_A_PERSON = /\b(e ?-?transfer|etransfer|email money transfer|zelle|venmo|cash ?app|remitly|western union|moneygram)\b/;
+
+/** An e-Transfer (or the like) to or from a person; never a card purchase that merely says Interac. */
+export function isTransferWithPerson(description: string): boolean {
+  return TO_A_PERSON.test(normalizeName(description));
+}
+
+/**
+ * The other party of an e-Transfer as its statement shows it ("Interac
+ * e-Transfer® Out to Example Person" → "Example Person"); null when it names
+ * nobody. For the household's own screens and rules only: it is never sent
+ * to a categorizer.
+ */
+export function personOf(description: string): string | null {
+  if (!isTransferWithPerson(description)) return null;
+  const m = /\b(?:to|from|sent to|received from|recipient|de|a|à)\s*:?\s+([^\d@#*|,;]{2,60}?)\s*(?:\(|\bref\b|\bconf\b|$)/i.exec(description.replace(/[®™]/g, ""));
+  const name = m?.[1]?.trim().replace(/\s+/g, " ") ?? "";
+  return name.length >= 2 ? name : null;
+}
+
 /** Buy-now-pay-later plans and consumer lenders: their payments are Debt payments, never transfers. */
 export function isConsumerLender(description: string): boolean {
   return CONSUMER_LENDERS.test(normalizeName(description));

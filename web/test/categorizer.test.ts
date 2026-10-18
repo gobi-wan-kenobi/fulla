@@ -275,3 +275,28 @@ describe("Debt Payments answers", () => {
     expect(modelCategory(cats, ans("Mortgage"), "expense")?.name).toBe("Housing");
   });
 });
+
+describe("Insurance and Interest answers", () => {
+  const ins = cats.find((c) => c.name === "Insurance")!;
+  const sub = (id: string, name: string): Category => ({ id, name, applies_to: "expense", parent_id: ins.id, icon: "shield", color_index: 0, sort: 0, archived: false, fixed: true });
+  const withSubs = [...cats, sub("i1", "Life insurance"), sub("i2", "Home insurance"), sub("i3", "Auto insurance"), sub("i4", "Health insurance")];
+  it.each([
+    ["Life", "Pre-authorized Debit to EXAMPLEINS-LIFE", "Life insurance"],
+    ["Auto Insurance", "EXAMPLE MUTUAL", "Auto insurance"],
+    ["Home Insurance", "EXAMPLE MUTUAL", "Home insurance"],
+    ["Health Insurance", "EXAMPLE PLAN", "Health insurance"],
+    ["Auto Insurance", "EXAMPLE LIFE ASSURANCE", "Life insurance"], // the description says which
+    ["Something Else", "EXAMPLE MUTUAL", "Insurance"],
+  ])("Insurance › %s, %s → %s", (s, description, name) => {
+    expect(modelCategory(withSubs, { parent: "Insurance", subcategory: s, spending: null }, "expense", description)?.name).toBe(name);
+  });
+  it("is Insurance itself without subcategories, and Other only in a household without Insurance", () => {
+    expect(modelCategory(cats, { parent: "Insurance", subcategory: "Life", spending: null }, "expense")?.name).toBe("Insurance");
+    expect(modelCategory(cats.filter((c) => c.name !== "Insurance"), { parent: "Insurance", subcategory: "Life", spending: null }, "expense")).toBeNull();
+  });
+  it("puts interest earned in Interest, else Other income", () => {
+    const a = { parent: "Income", subcategory: "Interest & Dividends", spending: null };
+    expect(modelCategory(cats, a, "income")?.name).toBe("Interest");
+    expect(modelCategory(cats.filter((c) => c.name !== "Interest"), a, "income")?.name).toBe("Other income");
+  });
+});

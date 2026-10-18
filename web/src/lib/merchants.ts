@@ -80,7 +80,14 @@ export const KNOWN_MERCHANTS: KnownMerchant[] = [
     { income: "other_income" }),
   m(["service charge", "monthly fee", "monthly account fee", "nsf", "overdraft", "overdraft interest", "atm fee",
     "annual fee", "interest charge", "interest charges"], "other"),
-  m(["interest", "deposit interest", "interest paid", "cashback", "cash back"], null, { income: "other_income" }),
+  m(["interest", "interest earned", "deposit interest", "interest paid", "interest credit"], null, { income: "interest" }),
+  m(["cashback", "cash back"], null, { income: "other_income" }),
+  // Insurance (the kind, life, home, auto or health, is read from the words: categorize.ts insuranceKind)
+  m(["rbcins", "rbc insurance", "rbc ins", "sun life", "manulife", "canada life", "great west life", "desjardins insurance",
+    "intact insurance", "td insurance", "belairdirect", "belair direct", "aviva", "allstate", "co operators", "cooperators",
+    "wawanesa", "economical insurance", "sonnet", "sonnet insurance", "square one insurance", "pc insurance",
+    "blue cross", "green shield", "securian", "empire life", "industrial alliance", "ia financial", "life insurance",
+    "home insurance", "tenant insurance", "auto insurance", "car insurance", "insurance premium"], "insurance", { fixed: true }),
   // Pay
   m(["payroll", "payroll deposit", "pay deposit", "direct deposit", "salary", "pay", "adp", "ceridian", "dayforce",
     "wagepoint"], null, { income: "salary", fixed: true }),

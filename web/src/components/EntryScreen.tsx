@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { cleanMerchant, suggest, type Suggestion } from "@/lib/categorize";
 import { canManage, newRule } from "@/lib/rules";
+import { needsReview } from "@/lib/review";
+import { personOf } from "@/lib/transfers";
 import { categoriesFor, newTransaction, problem, today, withKind } from "@/lib/ledger";
 import { activeMembers, type Category, type Config, type Transaction, type TransactionKind } from "@/lib/model";
 import { currencyOf, formatMoney, parseTyped } from "@/lib/money";
@@ -49,8 +51,10 @@ export function EntryScreen({ config, existing, onSave, onDelete, onClose, onCon
   // A category someone tapped is theirs; until then the note may suggest one (rules, then known shops).
   const [picked, setPicked] = useState(!!existing);
   const [suggested, setSuggested] = useState<Suggestion | null>(null);
-  const [remember, setRemember] = useState(false);
-  const [rulePattern, setRulePattern] = useState(() => cleanMerchant(existing?.tx.note ?? ""));
+  // An e-Transfer someone sorts from Review: a rule for that person is offered, ticked, so it is sorted next time too.
+  const person = existing ? personOf(existing.tx.note) : null;
+  const [remember, setRemember] = useState(!!person && !!existing && needsReview(existing.tx));
+  const [rulePattern, setRulePattern] = useState(() => person ?? cleanMerchant(existing?.tx.note ?? ""));
 
   const amount = parseTyped(typed || "0", currency, "dot") ?? 0;
   const current = { ...tx, amount_minor: amount };
@@ -228,7 +232,7 @@ export function EntryScreen({ config, existing, onSave, onDelete, onClose, onCon
             <div className="rounded-2xl bg-paper-high p-3 grid gap-2">
               <label className="flex items-center gap-3 t-body">
                 <input type="checkbox" data-testid="remember-rule" className="w-5 h-5 accent-current" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-                <span>Always put this in {chosenCategory?.name}</span>
+                <span>{person ? `Always put e-Transfers with ${person} in ${chosenCategory?.name}` : `Always put this in ${chosenCategory?.name}`}</span>
               </label>
               {remember && (
                 <label className="block">

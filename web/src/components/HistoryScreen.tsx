@@ -133,7 +133,8 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh,
       </div>
       {filter === "review" && (
         <p className="t-secondary text-ink-muted px-5 pb-2" data-testid="review-help">
-          {waiting.review} the categorizer was unsure of: pick a category and they leave this list.
+          {waiting.review} to sort: lines the categorizer was unsure of, and e-Transfers with people (only you know what they were for).
+          Pick a category and they leave this list; for a person, Fulla offers a rule so their next one is sorted.
           {" "}{waiting.unmatched} unmatched {waiting.unmatched === 1 ? "transfer" : "transfers"}: seen on one statement only. They match when you
           import the other account&apos;s statement; if there is none, mark them fine.
         </p>
