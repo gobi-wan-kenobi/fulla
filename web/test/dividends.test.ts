@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { grantsCategory } from "@/lib/categorize";
 import { buildImport, dividendsLabel, groupDividends, newAccounts, propose, readWealthsimpleActivityCsv, statementKey, type StatementAccountInfo, type StatementLine } from "@/lib/importers";
 import { monthTotals } from "@/lib/ledger";
-import { type Account, type Category, type Transaction, outsideIncome } from "@/lib/model";
+import { type Account, type Category, type Transaction, outsideTotals } from "@/lib/model";
 import { monthFigures, overview } from "@/lib/overview";
 import type { LocalRow } from "@/lib/sync";
 import { ALICE, HOUSEHOLD, category } from "./support";
@@ -115,17 +115,17 @@ describe("money that stays inside an investment account", () => {
     tx(4, 178, INVEST.id, TFSA.id), // dividends kept in the TFSA: not income
     tx(5, 6, INTEREST.id, TFSA.id), // interest on the TFSA's cash: not income
     tx(6, 2000, GRANTS.id, RESP.id), // a grant into the RESP: not income
-    tx(7, 13, INVEST.id, TFSA.id, "refund"), // a fee given back is still less spending
+    tx(7, 13, INVEST.id, TFSA.id, "refund"), // a fee given back inside the TFSA
   ];
   const rows: LocalRow[] = txs.map((t) => ({ tx: t, state: "synced", base: null }));
   const accounts = [CHEQUING, SAVINGS, TFSA, RESP];
 
   it("is left out of the Overview's income and History's month total, by the account's type", () => {
     expect(overview(rows, cats, "2030-03", "2030-04-01", accounts).figures.incomeMinor).toBe(301500);
-    expect(monthTotals(rows, "2030-03", outsideIncome(cats, accounts)).incomeMinor).toBe(301500);
-    expect(monthTotals(rows, "2030-03", outsideIncome(cats, accounts)).spentMinor).toBe(-13);
-    const outside = outsideIncome(cats, accounts);
-    expect(txs.filter(outside).map((t) => t.id)).toEqual([id(4), id(5), id(6)]);
+    expect(monthTotals(rows, "2030-03", outsideTotals(cats, accounts)).incomeMinor).toBe(301500);
+    expect(monthTotals(rows, "2030-03", outsideTotals(cats, accounts)).spentMinor).toBe(0); // the TFSA's fee refund is the TFSA's too
+    const outside = outsideTotals(cats, accounts);
+    expect(txs.filter(outside).map((t) => t.id)).toEqual([id(4), id(5), id(6), id(7)]);
   });
 
   it("counts again once the account is no longer an investment one, the grants category aside", () => {
@@ -154,6 +154,6 @@ describe("government grants", () => {
     const rows: LocalRow[] = txs.map((t) => ({ tx: t, state: "synced", base: null }));
     expect(overview(rows, CATEGORIES, "2030-03", "2030-04-01").figures.incomeMinor).toBe(300200);
     expect(monthFigures(txs, "2030-03").incomeMinor).toBe(302200); // without the categories, everything counts
-    expect(monthTotals(rows, "2030-03", outsideIncome(CATEGORIES)).incomeMinor).toBe(300200);
+    expect(monthTotals(rows, "2030-03", outsideTotals(CATEGORIES)).incomeMinor).toBe(300200);
   });
 });

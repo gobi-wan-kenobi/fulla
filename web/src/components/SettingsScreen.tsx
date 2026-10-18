@@ -7,9 +7,10 @@ import { ACCOUNT_TYPE_ICONS, accountTypeLabel, type Config, type Transaction } f
 import type { LocalRow } from "@/lib/sync";
 import { Icon } from "./Icon";
 import { Avatar, Chip, ScreenHeader, Section, SecondaryButton } from "./Pieces";
+import { AccountScreen } from "./AccountScreen";
 import { RulesScreen } from "./RulesScreen";
 
-export function SettingsScreen({ config, households, rows, onConfig, onBulk, onSwitch, onSignOut, onAddHousehold }: {
+export function SettingsScreen({ config, households, rows, onConfig, onBulk, onSwitch, onSignOut, onAddHousehold, accountId, onAccount, onOpen }: {
   config: Config;
   households: Membership[];
   rows: LocalRow[];
@@ -18,6 +19,10 @@ export function SettingsScreen({ config, households, rows, onConfig, onBulk, onS
   onSwitch: (id: string) => void;
   onSignOut: () => void;
   onAddHousehold: () => void;
+  /** The account whose page is open, kept by Main so it is still open after a row is edited. */
+  accountId?: string | null;
+  onAccount?: (id: string | null) => void;
+  onOpen?: (row: LocalRow) => void;
 }) {
   const [rules, setRules] = useState(false);
   const [invite, setInvite] = useState<{ code: string; expires_at: string } | null>(null);
@@ -26,6 +31,11 @@ export function SettingsScreen({ config, households, rows, onConfig, onBulk, onS
   const canInvite = me?.role === "owner" || me?.role === "admin";
   const ruleCount = (config.categorization_rules ?? []).filter((r) => !r.archived).length;
 
+  const [ownAccount, setOwnAccount] = useState<string | null>(null);
+  const shown = accountId !== undefined ? accountId : ownAccount;
+  const openAccount = onAccount ?? setOwnAccount;
+  const page = shown ? config.accounts.find((a) => a.id === shown) : undefined;
+  if (page) return <AccountScreen config={config} account={page} rows={rows} onOpen={onOpen} onClose={() => openAccount(null)} />;
   if (rules) return <RulesScreen config={config} rows={rows} onConfig={onConfig} onBulk={onBulk} onClose={() => setRules(false)} />;
 
   return (
@@ -82,10 +92,11 @@ export function SettingsScreen({ config, households, rows, onConfig, onBulk, onS
       </button>
       <Section>Accounts</Section>
       {config.accounts.filter((a) => !a.archived).map((a) => (
-        <div key={a.id} data-testid="account-row" className="px-5 py-2 t-body flex items-center gap-3">
+        <button key={a.id} type="button" data-testid="account-row" onClick={() => openAccount(a.id)} className="w-full px-5 py-2 t-body flex items-center gap-3 text-left yields">
           <Icon name={ACCOUNT_TYPE_ICONS[a.type] ?? "more_horiz"} size={18} className="text-ink-muted shrink-0" />
-          <span>{a.name} <span className="t-secondary text-ink-muted">· {accountTypeLabel(a.type)}</span></span>
-        </div>
+          <span className="flex-1">{a.name} <span className="t-secondary text-ink-muted">· {accountTypeLabel(a.type)}</span></span>
+          <ChevronRight size={18} className="text-ink-muted" />
+        </button>
       ))}
       {error && <p className="t-secondary text-danger px-5 pt-3">{error}</p>}
       <div className="p-5 grid gap-3">

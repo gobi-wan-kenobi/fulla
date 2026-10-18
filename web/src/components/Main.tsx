@@ -31,6 +31,7 @@ export function Main(props: {
   const household = useHousehold(props.householdId);
   const [tab, setTab] = useState<Tab>("overview");
   const [editing, setEditing] = useState<LocalRow | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
   const config = household.config;
 
   return (
@@ -63,7 +64,7 @@ export function Main(props: {
         ) : tab === "import" ? (
           <ImportScreen config={config} rows={household.rows} onImport={household.importTransactions} onConfig={household.setConfig} />
         ) : (
-          <SettingsScreen config={config} households={props.households} rows={household.rows} onConfig={household.setConfig} onBulk={household.saveTransactions} onSwitch={props.onSwitch} onSignOut={props.onSignOut} onAddHousehold={props.onAddHousehold} />
+          <SettingsScreen config={config} households={props.households} rows={household.rows} onConfig={household.setConfig} onBulk={household.saveTransactions} onSwitch={props.onSwitch} onSignOut={props.onSignOut} onAddHousehold={props.onAddHousehold} accountId={accountId} onAccount={setAccountId} onOpen={setEditing} />
         )}
       </div>
       {!editing && (
@@ -74,7 +75,7 @@ export function Main(props: {
                 key={key}
                 type="button"
                 data-testid={`tab-${key}`}
-                onClick={() => setTab(key)}
+                onClick={() => { setTab(key); setAccountId(null); }}
                 className="yields flex flex-col items-center gap-1 py-2"
                 aria-current={tab === key ? "page" : undefined}
               >

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // What screens draw, worked out here and tested, so screens do no arithmetic on money (AGENTS.md).
 import { randomId } from "./ids";
-import { activeMembers, allows, countsInTotals, nothingOutside, type Category, type Config, type OutsideIncome, type Transaction, type TransactionKind } from "./model";
+import { activeMembers, allows, countsInTotals, nothingOutside, type Category, type Config, type OutsideTotals, type Transaction, type TransactionKind } from "./model";
 import type { LocalRow } from "./sync";
 
 /** Today in the browser's own zone, as YYYY-MM-DD. */
@@ -37,15 +37,15 @@ export interface MonthTotals {
   incomeMinor: number;
 }
 
-/** Spent (expenses less refunds) and income in one calendar month; money in that is not the household's income (outsideIncome) is not counted. */
-export function monthTotals(rows: LocalRow[], month: string, outside: OutsideIncome = nothingOutside): MonthTotals {
+/** Spent (expenses less refunds) and income in one calendar month; rows outside the household's figures (outsideTotals) are not counted. */
+export function monthTotals(rows: LocalRow[], month: string, outside: OutsideTotals = nothingOutside): MonthTotals {
   let spent = 0;
   let income = 0;
   for (const t of counted(rows)) {
-    if (monthOf(t.date) !== month || !countsInTotals(t.kind)) continue;
+    if (monthOf(t.date) !== month || !countsInTotals(t.kind) || outside(t)) continue;
     if (t.kind === "expense") spent += t.amount_minor;
     else if (t.kind === "refund") spent -= t.amount_minor;
-    else if (t.kind === "income" && !outside(t)) income += t.amount_minor;
+    else if (t.kind === "income") income += t.amount_minor;
   }
   return { spentMinor: spent, incomeMinor: income };
 }
@@ -139,11 +139,11 @@ export interface SpendingSplit {
 }
 
 /** A month's spending (expenses less refunds) split into fixed and flexible by each row's own recurrence. */
-export function monthSpendingSplit(rows: LocalRow[], month: string): SpendingSplit {
+export function monthSpendingSplit(rows: LocalRow[], month: string, outside: OutsideTotals = nothingOutside): SpendingSplit {
   let fixed = 0;
   let flexible = 0;
   for (const t of counted(rows)) {
-    if (monthOf(t.date) !== month) continue;
+    if (monthOf(t.date) !== month || outside(t)) continue;
     const sign = t.kind === "expense" ? 1 : t.kind === "refund" ? -1 : 0;
     if (!sign) continue;
     if (t.recurrence === "fixed") fixed += sign * t.amount_minor;
@@ -166,4 +166,45 @@ export function recategorized(t: Transaction, category: Category): Transaction |
 export function withRecurrence(t: Transaction, fixed: boolean): Transaction | null {
   if (!countsInTotals(t.kind)) return null;
   return { ...t, recurrence: fixed ? "fixed" : "variable" };
+}
+
+export interface AccountMonth {
+  month: string;
+  /** Fees and other spending on the account, less what was given back; negative when more came back. */
+  feesMinor: number;
+  /** Dividends, interest, grants and other money in on the account. */
+  incomeMinor: number;
+  /** Transfers into the account less transfers out of it. */
+  transfersMinor: number;
+  count: number;
+}
+
+/**
+ * One account's months, newest first, as its own page shows them: its fees
+ * (expenses less refunds), its income and its net transfers. Every row on the
+ * account is here, whatever the household's figures leave out.
+ */
+export function accountMonths(rows: LocalRow[], accountId: string): AccountMonth[] {
+  const out = new Map<string, AccountMonth>();
+  for (const t of counted(rows)) {
+    const from = t.account_id === accountId;
+    const to = t.kind === "transfer" && t.to_account_id === accountId;
+    if (!from && !to) continue;
+    const m = monthOf(t.date);
+    const row = out.get(m) ?? { month: m, feesMinor: 0, incomeMinor: 0, transfersMinor: 0, count: 0 };
+    row.count++;
+    if (t.kind === "expense") row.feesMinor += t.amount_minor;
+    else if (t.kind === "refund") row.feesMinor -= t.amount_minor;
+    else if (t.kind === "income") row.incomeMinor += t.amount_minor;
+    else if (t.kind === "transfer") row.transfersMinor += (to ? t.amount_minor : 0) - (from ? t.amount_minor : 0);
+    out.set(m, row);
+  }
+  return [...out.values()].sort((a, b) => (a.month < b.month ? 1 : -1));
+}
+
+/** One account's rows (on it, or transferred into it), newest first. */
+export function accountRows(rows: LocalRow[], accountId: string): LocalRow[] {
+  return visible(rows)
+    .filter((r) => r.tx.account_id === accountId || (r.tx.kind === "transfer" && r.tx.to_account_id === accountId))
+    .sort((a, b) => (a.tx.date === b.tx.date ? (a.tx.created_at < b.tx.created_at ? 1 : -1) : a.tx.date < b.tx.date ? 1 : -1));
 }

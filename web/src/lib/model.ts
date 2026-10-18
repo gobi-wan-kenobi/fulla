@@ -110,23 +110,31 @@ export interface Category {
   excluded_from_income?: boolean;
 }
 
-/** Money in that is not the household's income, by its row; see outsideIncome. */
-export type OutsideIncome = (t: Pick<Transaction, "kind" | "category_id" | "account_id">) => boolean;
+/** A row that is not in the household's spending or income, though it is in its account's value; see outsideTotals. */
+export type OutsideTotals = (t: Pick<Transaction, "kind" | "category_id" | "account_id">) => boolean;
 
 /**
- * Which money in is not the household's income: anything that stays inside an
- * investment account (its dividends, interest and grants are the account's,
- * and show in net worth), and anything in a category left out of income
- * (Government grants, 0030). Dividends or interest paid into chequing or
- * savings are income as usual.
+ * Which rows are left out of the household's spending and income:
+ *  - anything that happens inside an investment account (its fees, taxes and
+ *    fee refunds, its dividends, interest and grants) is the account's: it
+ *    changes the account's value and net worth, not the month's figures;
+ *  - money in a category left out of income (Government grants, 0030), on
+ *    any account.
+ * Decided by the account's type, so it follows imports and a change of type.
+ * Dividends or interest paid into chequing or savings, and fees there, count
+ * as usual. Transfers in and out never count, so they are not asked about.
  */
-export function outsideIncome(categories: Category[], accounts: Pick<Account, "id" | "type">[] = []): OutsideIncome {
+export function outsideTotals(categories: Category[], accounts: Pick<Account, "id" | "type">[] = []): OutsideTotals {
   const excluded = new Set(categories.filter((c) => c.excluded_from_income).map((c) => c.id));
   const investment = new Set(accounts.filter((a) => a.type === "investment").map((a) => a.id));
-  return (t) => t.kind === "income" && ((!!t.category_id && excluded.has(t.category_id)) || (!!t.account_id && investment.has(t.account_id)));
+  return (t) => {
+    if (t.kind !== "income" && t.kind !== "expense" && t.kind !== "refund") return false;
+    if (t.account_id && investment.has(t.account_id)) return true;
+    return t.kind === "income" && !!t.category_id && excluded.has(t.category_id);
+  };
 }
-/** Everything that comes in is income. */
-export const nothingOutside: OutsideIncome = () => false;
+/** Every row counts. */
+export const nothingOutside: OutsideTotals = () => false;
 
 export interface CategorizationRule {
   id: string;

@@ -8,15 +8,17 @@
  *  - Spending is expenses less refunds. Transfers and settlements move money
  *    between the household's own accounts and people: never in a total.
  *  - Debt payments are spending (fixed, as their category says).
- *  - Money that stays inside an investment account (dividends, interest,
- *    grants) and money in a category left out of income is the account's,
- *    not the household's: not in the income (it shows in net worth).
+ *  - Anything that happens inside an investment account (fees, taxes, fee
+ *    refunds, dividends, interest, grants) is the account's, not the
+ *    household's: not in the spending, the categories or the income (it
+ *    shows in net worth). Money in a category left out of income is not
+ *    income either.
  *  - Categories roll up to their parent; a parent opens to its subcategories.
  *  - "Usually" is the average of up to three earlier months that have
  *    anything written down.
  */
 import { counted, monthOf, shiftMonth } from "./ledger";
-import { type Account, type Category, type OutsideIncome, type Transaction, nothingOutside, outsideIncome } from "./model";
+import { type Account, type Category, type OutsideTotals, type Transaction, nothingOutside, outsideTotals } from "./model";
 import type { LocalRow } from "./sync";
 
 export interface Figures {
@@ -63,13 +65,13 @@ function parentOf(byId: Map<string, Category>, id: string | null): string | null
   return c?.parent_id && byId.has(c.parent_id) ? c.parent_id : id;
 }
 
-export function monthFigures(txs: Transaction[], month: string, outside: OutsideIncome = nothingOutside): Figures {
+export function monthFigures(txs: Transaction[], month: string, outside: OutsideTotals = nothingOutside): Figures {
   let income = 0;
   let fixed = 0;
   let flexible = 0;
   for (const t of txs) {
-    if (monthOf(t.date) !== month) continue;
-    if (t.kind === "income" && !outside(t)) income += t.amount_minor;
+    if (monthOf(t.date) !== month || outside(t)) continue;
+    if (t.kind === "income") income += t.amount_minor;
     const s = spend(t);
     if (t.recurrence === "fixed") fixed += s;
     else flexible += s;
@@ -80,12 +82,12 @@ export function monthFigures(txs: Transaction[], month: string, outside: Outside
 }
 
 /** Spending by top-level category, largest first; categories that netted to nothing are left out. */
-export function byCategory(txs: Transaction[], categories: Category[], month: string): CategorySpend[] {
+export function byCategory(txs: Transaction[], categories: Category[], month: string, outside: OutsideTotals = nothingOutside): CategorySpend[] {
   const byId = new Map(categories.map((c) => [c.id, c]));
   const totals = (m: string) => {
     const out = new Map<string | null, { amount: number; fixed: number; flexible: number; subs: Map<string, number> }>();
     for (const t of txs) {
-      if (monthOf(t.date) !== m) continue;
+      if (monthOf(t.date) !== m || outside(t)) continue;
       const s = spend(t);
       if (!s) continue;
       const key = parentOf(byId, t.category_id);
@@ -138,11 +140,12 @@ export function wholePercents(shares: number[]): number[] {
 
 export function overview(rows: LocalRow[], categories: Category[], month: string, todayDate: string, accounts: Pick<Account, "id" | "type">[] = []): Overview {
   const txs = counted(rows);
+  const outside = outsideTotals(categories, accounts);
   return {
     month,
     running: month === monthOf(todayDate),
-    figures: monthFigures(txs, month, outsideIncome(categories, accounts)),
-    categories: byCategory(txs, categories, month),
+    figures: monthFigures(txs, month, outside),
+    categories: byCategory(txs, categories, month, outside),
   };
 }
 
