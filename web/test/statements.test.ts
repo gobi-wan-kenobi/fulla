@@ -209,5 +209,15 @@ describe("transfer matching", () => {
     expect(gone).toHaveLength(1);
     expect(kept[0]).toMatchObject({ account_id: BANK_A, to_account_id: BANK_B });
     expect(hasTag(kept[0], UNMATCHED_TAG)).toBe(false);
+
+    // Two transfers out of one account to two stand-ins, same amount and day, are two transfers, not one.
+    const twoOut = [
+      rows[0],
+      base("00000000-0000-4000-8000-000000000503", BANK_A, SA, "2030-01-10", "fp-c"),
+      base("00000000-0000-4000-8000-000000000504", BANK_A, SB, "2030-01-10", "fp-d"),
+    ];
+    const none = matchTransfers({ accountId: BANK_A, fresh: [], existing: twoOut, accounts: [...accounts, acct(SA, "Other account", "other"), acct(SB, "Other account 2", "other")] });
+    expect(none.joined).toBe(0);
+    expect(none.update).toHaveLength(0);
   });
 });

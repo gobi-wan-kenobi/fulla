@@ -142,7 +142,8 @@ export function matchTransfers(input: MatchInput): MatchResult {
       if (!hasTag(r, UNMATCHED_TAG)) continue;
       const other = out ? r.to_account_id : r.account_id; // the end the money reached (or left)
       const mine = out ? r.account_id : r.to_account_id; // the end that should be `side`
-      if (!other || other === side || !couldBe(mine, side)) continue;
+      // The far end must be a real account: two transfers out of one account into two stand-ins are not one transfer.
+      if (!other || other === side || standIn(other) || !couldBe(mine, side)) continue;
       if (far && !couldBe(far, other)) continue;
       const fit = mine === side ? 0 : nameFit(byId.get(mine ?? ""), byId.get(side));
       const score = (mine === side ? 0 : 10) + (far === other ? 0 : 5) + gap + fit;
