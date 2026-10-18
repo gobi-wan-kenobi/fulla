@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 "use client";
-import { FileUp, History, Plus, Settings } from "lucide-react";
+import { FileUp, History, PieChart, Plus, Settings } from "lucide-react";
 import { useState } from "react";
 import type { Membership } from "@/lib/api";
 import { useHousehold } from "@/lib/store";
@@ -8,11 +8,13 @@ import type { LocalRow } from "@/lib/sync";
 import { EntryScreen } from "./EntryScreen";
 import { HistoryScreen } from "./HistoryScreen";
 import { ImportScreen } from "./ImportScreen";
+import { OverviewScreen } from "./OverviewScreen";
 import { SettingsScreen } from "./SettingsScreen";
 
-type Tab = "add" | "history" | "import" | "settings";
+type Tab = "overview" | "add" | "history" | "import" | "settings";
 
 const TABS: { key: Tab; label: string; icon: typeof Plus }[] = [
+  { key: "overview", label: "Overview", icon: PieChart },
   { key: "add", label: "Add", icon: Plus },
   { key: "history", label: "History", icon: History },
   { key: "import", label: "Import", icon: FileUp },
@@ -27,7 +29,7 @@ export function Main(props: {
   onAddHousehold: () => void;
 }) {
   const household = useHousehold(props.householdId);
-  const [tab, setTab] = useState<Tab>("add");
+  const [tab, setTab] = useState<Tab>("overview");
   const [editing, setEditing] = useState<LocalRow | null>(null);
   const config = household.config;
 
@@ -52,6 +54,8 @@ export function Main(props: {
             }}
             onClose={() => setEditing(null)}
           />
+        ) : tab === "overview" ? (
+          <OverviewScreen config={config} rows={household.rows} />
         ) : tab === "add" ? (
           <EntryScreen config={config} onSave={(tx) => household.saveTransaction(tx)} onConfig={household.setConfig} />
         ) : tab === "history" ? (
@@ -64,7 +68,7 @@ export function Main(props: {
       </div>
       {!editing && (
         <nav className="fixed bottom-0 inset-x-0 bg-paper-high border-t border-line safe-bottom">
-          <div className="max-w-md mx-auto grid grid-cols-4">
+          <div className="max-w-md mx-auto grid grid-cols-5">
             {TABS.map(({ key, label, icon: I }) => (
               <button
                 key={key}

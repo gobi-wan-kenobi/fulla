@@ -1,0 +1,149 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+"use client";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Landmark } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { api } from "@/lib/api";
+import { monthOf, shiftMonth, today } from "@/lib/ledger";
+import type { Config } from "@/lib/model";
+import { formatMoney } from "@/lib/money";
+import { type BalanceSnapshot, holdings, overview, wholePercents } from "@/lib/overview";
+import type { LocalRow } from "@/lib/sync";
+import { Icon } from "./Icon";
+import { EmptyState, ScreenHeader, Section, categoryColor } from "./Pieces";
+
+function monthLabel(month: string, locale: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, 1)));
+}
+
+/**
+ * The month at a glance, as the Android Overview: the month, what came in,
+ * what went out and what is left, then where the spending went, one plain row
+ * per category. Figures come from lib/overview.ts.
+ */
+export function OverviewScreen({ config, rows, snapshots: given, initialMonth, initialOpen }: {
+  config: Config; rows: LocalRow[]; snapshots?: BalanceSnapshot[]; initialMonth?: string; initialOpen?: string | null;
+}) {
+  const locale = config.household.locale || "en-CA";
+  const currency = config.household.currency;
+  const current = monthOf(today());
+  const [month, setMonth] = useState(initialMonth ?? current);
+  const [open, setOpen] = useState<string | null>(initialOpen ?? null);
+  const [fetched, setFetched] = useState<BalanceSnapshot[]>([]);
+  useEffect(() => {
+    if (given) return;
+    let live = true;
+    api.balanceSnapshots(config.household.id).then((s) => live && setFetched(s), () => undefined);
+    return () => { live = false; };
+  }, [config.household.id, given]);
+  const snapshots = given ?? fetched;
+
+  const view = useMemo(() => overview(rows, config.categories, month, today()), [rows, config.categories, month]);
+  const held = useMemo(() => holdings(rows, config.accounts, snapshots, today()), [rows, config.accounts, snapshots]);
+  const f = view.figures;
+  const money = (n: number, signed = false) => formatMoney(n, currency, locale, signed);
+  const category = (id: string | null) => (id ? config.categories.find((c) => c.id === id) : undefined);
+  const percents = wholePercents(view.categories.map((c) => Math.max(0, c.amountMinor)));
+  const openAccounts = config.accounts.filter((a) => !a.archived).length;
+  const nothing = f.incomeMinor === 0 && view.categories.length === 0;
+
+  return (
+    <div>
+      <ScreenHeader title="Overview" />
+      <div className="flex items-center justify-between px-3" data-testid="period">
+        <button type="button" aria-label="Previous month" className="yields p-2" onClick={() => setMonth(shiftMonth(month, -1))}><ChevronLeft size={22} /></button>
+        <div className="t-section" data-testid="overview-month">{monthLabel(month, locale)}</div>
+        <button type="button" aria-label="Next month" className="yields p-2 disabled:opacity-30" disabled={month >= current} onClick={() => setMonth(shiftMonth(month, 1))}>
+          <ChevronRight size={22} />
+        </button>
+      </div>
+
+      <div className="px-5 pt-4 pb-2 text-center" data-testid="overview-left">
+        <div className="t-label text-ink-muted uppercase">{view.running ? "Left so far" : f.leftMinor < 0 ? "Overspent" : "Saved"}</div>
+        <div className={`t-hero ${f.leftMinor < 0 ? "text-danger" : "text-ink"}`}>{money(f.leftMinor)}</div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 px-5 py-3" data-testid="overview-figures">
+        <div>
+          <div className="t-label text-ink-muted">Money in</div>
+          <div className="t-amount text-money-in truncate" data-testid="figure-in">{money(f.incomeMinor, true)}</div>
+        </div>
+        <div>
+          <div className="t-label text-ink-muted">Money out</div>
+          <div className="t-amount text-money-out truncate" data-testid="figure-out">{money(f.spentMinor)}</div>
+        </div>
+        <div>
+          <div className="t-label text-ink-muted">{view.running ? "Left now" : "Saved"}</div>
+          <div className="t-amount text-ink" data-testid="figure-rate">{f.savingsRate === null ? "—" : `${Math.round(f.savingsRate * 100)} %`}</div>
+        </div>
+      </div>
+      {f.spentMinor !== 0 && (
+        <p className="t-secondary text-ink-muted px-5" data-testid="overview-split">
+          Fixed {money(f.fixedMinor)} · Flexible {money(f.flexibleMinor)} · transfers between your accounts are not counted
+        </p>
+      )}
+
+      {held && (
+        <div className="flex items-center gap-4 px-5 py-3 mt-3 border-y border-line" data-testid="overview-holdings">
+          <Landmark size={22} className="text-ink-muted shrink-0" aria-hidden />
+          <div className="flex-1 min-w-0">
+            <div className="t-body">What the accounts hold</div>
+            <div className="t-secondary text-ink-muted">
+              Today, from statement and opening balances{held.known < openAccounts ? ` · ${held.known} of ${openAccounts} accounts` : ""}
+            </div>
+          </div>
+          <div className="t-amount">{money(held.totalMinor)}</div>
+        </div>
+      )}
+
+      {nothing ? (
+        <EmptyState title="Nothing this month yet" text="What you add or import shows up here: what came in, what went out, and where it went." />
+      ) : view.categories.length > 0 && (
+        <>
+          <Section>Where it went</Section>
+          {view.categories.map((row, i) => {
+            const c = category(row.categoryId);
+            const key = row.categoryId ?? "none";
+            const expanded = open === key;
+            const context = [
+              `${percents[i]} %`,
+              row.fixedMinor !== 0 && row.flexibleMinor !== 0 ? `fixed ${money(row.fixedMinor)}` : row.fixedMinor !== 0 ? "fixed" : null,
+              row.usualMinor > 0 ? `usually ${money(row.usualMinor)}` : null,
+            ].filter(Boolean).join(" · ");
+            return (
+              <div key={key} data-testid="where-row">
+                <button
+                  type="button"
+                  className="w-full flex items-center gap-4 px-5 py-3 border-b border-line text-left yields"
+                  onClick={() => row.subs.length > 0 && setOpen(expanded ? null : key)}
+                  aria-expanded={row.subs.length > 0 ? expanded : undefined}
+                >
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-paper-high">
+                    <Icon name={c?.icon ?? "label"} color={categoryColor(c?.color_index ?? 0)} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="t-body truncate">{c?.name ?? "Uncategorized"}</div>
+                    <div className="t-secondary text-ink-muted truncate">{context}</div>
+                    <div className="h-1 rounded-full bg-paper-high mt-1.5 overflow-hidden" aria-hidden>
+                      <div className="h-full rounded-full" style={{ width: `${Math.round(row.share * 100)}%`, background: categoryColor(c?.color_index ?? 0) }} />
+                    </div>
+                  </div>
+                  <div className="t-amount">{money(row.amountMinor)}</div>
+                  <span className="w-[18px] shrink-0 text-ink-muted" aria-hidden>
+                    {row.subs.length > 0 && (expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />)}
+                  </span>
+                </button>
+                {expanded && row.subs.map((s) => (
+                  <div key={s.categoryId} className="flex items-center gap-4 pl-[76px] pr-[54px] py-2 border-b border-line" data-testid="where-sub">
+                    <div className="flex-1 t-secondary truncate">{s.categoryId === row.categoryId ? "General" : category(s.categoryId)?.name ?? ""}</div>
+                    <div className="t-amount text-ink-muted">{money(s.amountMinor)}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}

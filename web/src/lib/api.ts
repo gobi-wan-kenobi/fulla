@@ -68,6 +68,8 @@ export const api = {
   /** A statement's closing balance for one of the household's accounts (statements only, for now). */
   balanceSnapshotSave: (householdId: string, snapshot: { account_id: string; as_of: string; balance_minor: number }) =>
     call<{ id: string }>("fulla_balance_snapshot_save", { p_household_id: householdId, p_snapshot: snapshot }),
+  balanceSnapshots: (householdId: string) =>
+    call<{ id: string; account_id: string; as_of: string; balance_minor: number; source: string }[]>("fulla_balance_snapshots", { p_household_id: householdId }),
   categoryUpsert: (householdId: string, category: Category) => call<Config>("fulla_category_upsert", { p_household_id: householdId, p_category: category }),
   ruleUpsert: (householdId: string, rule: CategorizationRule) => call<Config>("fulla_rule_upsert", { p_household_id: householdId, p_rule: rule }),
   importProfileUpsert: (householdId: string, profile: SavedImportProfile) =>
