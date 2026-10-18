@@ -46,7 +46,7 @@ export interface SkippedLine {
  */
 export interface StatementAccountInfo {
   institution: string | null;
-  type: "checking" | "savings" | "credit_card" | "other" | null;
+  type: "checking" | "savings" | "credit_card" | "investment" | "other" | null;
   /** Four digits (or, for an account number with letters, its last four letters and digits, upper case), or null. */
   last4: string | null;
   /**

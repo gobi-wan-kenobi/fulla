@@ -191,7 +191,7 @@ export function readWealthsimpleInvestment(pages: PdfPage[]): PdfStatementResult
     format: `${label} statement${version > 1 ? ` (amended, version ${version})` : ""}`,
     ignored,
     statement: {
-      institution: "Wealthsimple", type: "other", last4: tail ? accountTail(tail) : null,
+      institution: "Wealthsimple", type: "investment", last4: tail ? accountTail(tail) : null,
       closingBalanceMinor: marketValue, closingDate: end, label, periodStart: start, version,
     },
   };

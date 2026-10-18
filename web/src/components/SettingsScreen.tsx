@@ -3,8 +3,9 @@
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { api, type Membership } from "@/lib/api";
-import type { Config, Transaction } from "@/lib/model";
+import { ACCOUNT_TYPE_ICONS, accountTypeLabel, type Config, type Transaction } from "@/lib/model";
 import type { LocalRow } from "@/lib/sync";
+import { Icon } from "./Icon";
 import { Avatar, Chip, ScreenHeader, Section, SecondaryButton } from "./Pieces";
 import { RulesScreen } from "./RulesScreen";
 
@@ -81,7 +82,10 @@ export function SettingsScreen({ config, households, rows, onConfig, onBulk, onS
       </button>
       <Section>Accounts</Section>
       {config.accounts.filter((a) => !a.archived).map((a) => (
-        <div key={a.id} className="px-5 py-2 t-body">{a.name} <span className="t-secondary text-ink-muted">· {a.type.replace("_", " ")}</span></div>
+        <div key={a.id} data-testid="account-row" className="px-5 py-2 t-body flex items-center gap-3">
+          <Icon name={ACCOUNT_TYPE_ICONS[a.type] ?? "more_horiz"} size={18} className="text-ink-muted shrink-0" />
+          <span>{a.name} <span className="t-secondary text-ink-muted">· {accountTypeLabel(a.type)}</span></span>
+        </div>
       ))}
       {error && <p className="t-secondary text-danger px-5 pt-3">{error}</p>}
       <div className="p-5 grid gap-3">

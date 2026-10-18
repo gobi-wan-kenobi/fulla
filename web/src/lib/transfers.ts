@@ -42,7 +42,9 @@ export const OTHER_ACCOUNT = "Other account";
 export const CREDIT_CARD = "Credit card";
 export const BANK_ACCOUNT = "Bank account";
 
-const BNPL = /\b(affirm|klarna|afterpay|after pay|clearpay|paybright|pay bright|sezzle|uplift|zip ?pay|katapult|pay in 4|paypal pay later)\b/;
+/** PayPal's instalment plan as card statements show it: "PAYPAL *PYPL PAYIN4", "PayPal Pay in 4", "PAYPAL PAY-IN-4". */
+const PAY_IN_4 = /\b(pay ?-?in ?-?(4|four)|(paypal|pypl) pay ?later)\b/;
+const BNPL = new RegExp(`\\b(affirm|klarna|afterpay|after pay|clearpay|paybright|pay bright|sezzle|uplift|zip ?pay|katapult)\\b|${PAY_IN_4.source}`);
 const PERSONAL_LENDERS =
   /\b(easy ?financial|fairstone|spring financial|lendcare|go ?peer|mogo|lendful|cashco|money ?mart|easyhome|uei financial|uei|loans ?canada|lend ?direct|iceberg finance|consumer capital|prestige finance|cash ?money|magical credit|borrowell)\b/;
 const CONSUMER_LENDERS = new RegExp(`${BNPL.source}|${PERSONAL_LENDERS.source}`);
@@ -75,7 +77,9 @@ export function isConsumerLender(description: string): boolean {
 
 /** Money to or from a person (Interac e-Transfer and the like): spending or income, not a transfer. */
 export function isPersonToPerson(description: string): boolean {
-  return PERSON_TO_PERSON.test(normalizeName(description));
+  const words = normalizeName(description);
+  // A PayPal Pay in 4 instalment says PayPal but repays a plan: Debt payments, not a person.
+  return PERSON_TO_PERSON.test(words) && !PAY_IN_4.test(words);
 }
 
 const CARD = /\b(mastercard|master card|visa|amex|american express|credit card|capital one|cards?)\b/;

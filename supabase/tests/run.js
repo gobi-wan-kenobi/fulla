@@ -1883,6 +1883,26 @@ test('new households start with Fees, Investment income and Credit card interest
   assert.equal(cats.find((c) => c.name === 'Personal loan').fixed, true);
 });
 
+test('an account can be an investment account, and still nothing but the known types (0029)', (ctx) => {
+  const id = uuid();
+  const saved = rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id, name: 'Example TFSA', type: 'investment', institution: 'Example Broker', last4: 'XY7Z' } });
+  const a = saved.accounts.find((x) => x.id === id);
+  assert.equal(a.type, 'investment');
+  assert.equal(a.last4, 'XY7Z');
+  // An "other" account becomes an investment one, keeping its name and digits.
+  const other = uuid();
+  rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id: other, name: 'Example Crypto', type: 'other', institution: 'Example Broker', last4: 'AB12' } });
+  const moved = rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id: other, name: 'Example Crypto', type: 'investment' } }).accounts.find((x) => x.id === other);
+  assert.equal(moved.type, 'investment');
+  assert.equal(moved.last4, 'AB12');
+  for (const type of ['investments', 'brokerage', 'INVESTMENT', '']) {
+    expectError(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id, name: 'Example TFSA', type } }, 'validation_failed', 400);
+  }
+  // The table refuses an unknown type even from the service role.
+  const r = ctx.db.admin(`update fulla.accounts set type = 'brokerage' where id = ${h.literal(id)};`, { expectFailure: true });
+  assert.ok(!r.ok, 'an unknown type was stored');
+});
+
 test('a category change is saved as a scrubbed example with labels, only by members', (ctx) => {
   const cats = rpc(ctx.db, ctx.alice, 'fulla_config_get', { p_household_id: ctx.hh }).categories;
   const other = cats.find((c) => c.name === 'Other').id;

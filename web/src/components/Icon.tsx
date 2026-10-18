@@ -4,7 +4,7 @@
 import {
   Baby, Bike, Bolt, BookOpen, Briefcase, Car, CircleHelp, Coffee, CreditCard, Drama, Ellipsis, Fuel, Gamepad2, Gift, GraduationCap,
   Heart, HeartPulse, Home, Landmark, MonitorPlay, PawPrint, PiggyBank, Plane, Receipt, Scissors, Shield, Shirt, ShoppingBag,
-  ShoppingCart, Smartphone, Tag, Ticket, Bus, UtensilsCrossed, Wallet, Dumbbell, type LucideIcon,
+  ShoppingCart, Smartphone, Tag, Ticket, TrendingUp, Bus, UtensilsCrossed, Wallet, Dumbbell, type LucideIcon,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -14,7 +14,7 @@ const ICONS: Record<string, LucideIcon> = {
   local_hospital: HeartPulse, local_gas_station: Fuel, directions_car: Car, pets: PawPrint, flight: Plane, smartphone: Smartphone,
   fitness_center: Dumbbell, child_care: Baby, local_cafe: Coffee, theater_comedy: Drama, confirmation_number: Ticket,
   content_cut: Scissors, shield: Shield, account_balance: Landmark, checkroom: Shirt, work: Briefcase, receipt: Receipt,
-  credit_card: CreditCard, menu_book: BookOpen, pedal_bike: Bike,
+  credit_card: CreditCard, menu_book: BookOpen, pedal_bike: Bike, trending_up: TrendingUp,
 };
 
 export function Icon({ name, size = 22, className, color }: { name: string; size?: number; className?: string; color?: string }) {

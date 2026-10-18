@@ -98,7 +98,7 @@ describe("reading statements", () => {
     const r = await read(investmentStyle({ version: 2 }));
     expect(r.kind).toBe("investment");
     expect(r.statement).toMatchObject({
-      institution: "Wealthsimple", type: "other", last4: "PLE1", closingBalanceMinor: 500000, closingDate: "2030-01-31",
+      institution: "Wealthsimple", type: "investment", last4: "PLE1", closingBalanceMinor: 500000, closingDate: "2030-01-31",
       periodStart: "2030-01-01", label: "Wealthsimple TFSA", version: 2,
     });
     expect(r.balance.ok).toBe(true);
@@ -156,6 +156,7 @@ describe("importing card and investment statements", () => {
     const r = await read(investmentStyle());
     const tfsa = proposedStatementAccount(HOUSEHOLD, [CHEQUING], r.statement);
     expect(tfsa.name).toBe("Wealthsimple TFSA ••PLE1");
+    expect(tfsa.type).toBe("investment");
     const resp = acct(311, "Family RESP", "other");
     const other = acct(312, "Other account", "other");
     const out1 = (to: string, n: number): Transaction => ({

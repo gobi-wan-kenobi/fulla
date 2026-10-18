@@ -7,7 +7,7 @@ import { accountIdFor, propose, type ProposeInput } from "@/lib/importers";
 import { monthSpendingSplit, monthTotals } from "@/lib/ledger";
 import type { StatementLine } from "@/lib/importers";
 import type { LocalRow } from "@/lib/sync";
-import { BANK_ACCOUNT, CREDIT_CARD, OTHER_ACCOUNT, isConsumerLender, knownDebt, knownTransfer } from "@/lib/transfers";
+import { BANK_ACCOUNT, CREDIT_CARD, OTHER_ACCOUNT, isConsumerLender, isPersonToPerson, knownDebt, knownTransfer } from "@/lib/transfers";
 
 import { ALICE, HOUSEHOLD, LEISURE, MAIN, SALARY, category, config } from "./support";
 
@@ -52,6 +52,13 @@ describe("known transfers", () => {
     expect(knownTransfer(text, amount)).toBeNull();
   });
 
+  it("never takes a PayPal Pay in 4 instalment for money to a person", () => {
+    expect(isPersonToPerson("PAYPAL *PYPL PAYIN4 5550000000")).toBe(false);
+    expect(isPersonToPerson("PayPal Pay in 4")).toBe(false);
+    expect(isPersonToPerson("PAYPAL *EXAMPLE FRIEND")).toBe(true);
+    expect(isConsumerLender("PAYPAL *PYPL PAYIN4 5550000000")).toBe(true);
+  });
+
   it("knows the consumer lenders", () => {
     for (const t of ["AFFIRM INC", "easyfinancial", "Easy Financial Services", "AFTERPAY", "PayBright", "SEZZLE", "goPeer LP-0000", "UEI Financial", "MOGO"]) expect(isConsumerLender(t)).toBe(true);
     expect(isConsumerLender("EXAMPLE CREDIT UNION")).toBe(false);
@@ -72,6 +79,12 @@ describe("debt payments", () => {
     ["Pre-authorized Debit to SAMPLE AUTO LOAN", "car_loan"],
     ["EXAMPLE TOYOTA FINANCIAL PAD", "car_loan"],
     ["EXAMPLE BANK LOAN PAYMENT", "other_debt"],
+    // PayPal Pay in 4, however the card statement words it (made-up numbers).
+    ["PAYPAL *PYPL PAYIN4 5550000000", "bnpl"],
+    ["PAYPAL *PAY IN 4 5550000000", "bnpl"],
+    ["PayPal Pay in 4", "bnpl"],
+    ["PAYPAL PAY-IN-4 INSTALMENT", "bnpl"],
+    ["PayPal Pay Later", "bnpl"],
   ])("%s → %s", (text, kind) => {
     expect(knownDebt(text, -10000)).toEqual({ kind });
   });
@@ -83,6 +96,9 @@ describe("debt payments", () => {
     ["Interac e-Transfer® Out to Example Friend", -5000],
     ["Example Coffee", -450],
     ["AFFIRM REFUND", 4970], // money in is never a repayment
+    ["PAYPAL *PYPL PAYIN4 5550000000", 1949], // nor is a Pay in 4 refund
+    ["PAYPAL *EXAMPLE SHOP 5550000000", -1949], // an ordinary PayPal purchase is not a plan
+    ["PAYPAL *PAYMENTS4U EXAMPLE", -1949],
   ])("%s is not one", (text, amount) => {
     expect(knownDebt(text, amount)).toBeNull();
   });
@@ -145,6 +161,19 @@ describe("transfers in an import", () => {
     const rows: LocalRow[] = p.map((x) => ({ tx: x.transaction, state: "synced", base: null }));
     expect(monthTotals(rows, "2030-01").spentMinor).toBe(4970 + 650 + 32000);
     expect(monthSpendingSplit(rows, "2030-01").fixedMinor).toBe(4970 + 32000);
+  });
+
+  it("a PayPal Pay in 4 card charge goes to Buy now pay later, before any categorizer", () => {
+    const card: StatementLine[] = [
+      { date: "2030-01-09", amountMinor: -1949, description: "PAYPAL *PYPL PAYIN4 5550000000" },
+      { date: "2030-01-10", amountMinor: -2500, description: "PayPal Pay in 4" },
+    ];
+    const p = plan(card, { names: { categories: withDebt, members: config.members, accounts: config.accounts } });
+    for (const x of p) {
+      expect(x.transaction).toMatchObject({ kind: "expense", category_id: BNPL, recurrence: "fixed" });
+      expect(x.source).toBe("debt");
+      expect(x.matchedDebt).toEqual({ kind: "bnpl" });
+    }
   });
 
   it("keep the same ids, so a file imported before is still recognised", () => {
