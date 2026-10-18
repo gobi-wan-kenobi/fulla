@@ -105,8 +105,8 @@ describe("reading statements", () => {
     expect(r.ignored).toBe(2);
     expect(r.lines.map((l) => [l.date, l.amountMinor, l.role, l.description, l.originalAmountMinor ?? null, l.originalCurrency ?? null])).toEqual([
       ["2030-01-05", 20000, "transfer", "Contribution", null, null],
-      ["2030-01-20", 300, "dividend", "EXAMPLE ETF: Cash dividend distribution", null, null],
-      ["2030-01-10", 70, "dividend", "EXAMPLECO: Cash dividend distribution", 50, "USD"],
+      // The month's dividends, CAD and USD, as one line for their total in CAD (dividends.ts).
+      ["2030-01-20", 370, "dividend", "Dividends – January (2)", null, null],
       ["2030-01-10", -14, "fee", "Non-resident tax", 10, "USD"],
     ]);
     expect((await read(investmentStyle())).statement.version).toBe(1);
@@ -188,8 +188,8 @@ describe("importing card and investment statements", () => {
     expect(out.matched).toBe(1);
     expect(out.rows.find((t) => t.id === id(512))!.to_account_id).toBe(tfsa.id);
     expect(hasTag(out.rows.find((t) => t.id === id(511))!, UNMATCHED_TAG)).toBe(true);
-    // Dividends are investment income; tax withheld is a fee.
-    expect(out.insert.filter((t) => t.kind === "income").map((t) => t.category_id)).toEqual([INVEST.id, INVEST.id]);
+    // The month's dividends are one line of investment income; tax withheld is a fee.
+    expect(out.insert.filter((t) => t.kind === "income").map((t) => [t.category_id, t.amount_minor, t.note])).toEqual([[INVEST.id, 370, "Dividends – January (2)"]]);
     expect(out.insert.find((t) => t.kind === "expense")!.category_id).toBe(FEES.id);
   });
 

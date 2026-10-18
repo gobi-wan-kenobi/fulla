@@ -6,6 +6,9 @@ import type { AppliesTo } from "./model";
 export interface DefaultSubcategory {
   key: string;
   name: Record<string, string>;
+  fixed?: boolean;
+  /** Money in here is not the household's income (Government grants). */
+  excluded_from_income?: boolean;
 }
 
 export interface DefaultCategory {

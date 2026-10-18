@@ -8,12 +8,14 @@
  *  - Spending is expenses less refunds. Transfers and settlements move money
  *    between the household's own accounts and people: never in a total.
  *  - Debt payments are spending (fixed, as their category says).
+ *  - Money in a category left out of income (a government grant into an
+ *    RESP) is the account's, not the household's: not in the income.
  *  - Categories roll up to their parent; a parent opens to its subcategories.
  *  - "Usually" is the average of up to three earlier months that have
  *    anything written down.
  */
 import { counted, monthOf, shiftMonth } from "./ledger";
-import type { Account, Category, Transaction } from "./model";
+import { type Account, type Category, type Transaction, outsideIncome } from "./model";
 import type { LocalRow } from "./sync";
 
 export interface Figures {
@@ -60,13 +62,13 @@ function parentOf(byId: Map<string, Category>, id: string | null): string | null
   return c?.parent_id && byId.has(c.parent_id) ? c.parent_id : id;
 }
 
-export function monthFigures(txs: Transaction[], month: string): Figures {
+export function monthFigures(txs: Transaction[], month: string, excluded: Set<string> = new Set()): Figures {
   let income = 0;
   let fixed = 0;
   let flexible = 0;
   for (const t of txs) {
     if (monthOf(t.date) !== month) continue;
-    if (t.kind === "income") income += t.amount_minor;
+    if (t.kind === "income" && !(t.category_id && excluded.has(t.category_id))) income += t.amount_minor;
     const s = spend(t);
     if (t.recurrence === "fixed") fixed += s;
     else flexible += s;
@@ -138,7 +140,7 @@ export function overview(rows: LocalRow[], categories: Category[], month: string
   return {
     month,
     running: month === monthOf(todayDate),
-    figures: monthFigures(txs, month),
+    figures: monthFigures(txs, month, outsideIncome(categories)),
     categories: byCategory(txs, categories, month),
   };
 }

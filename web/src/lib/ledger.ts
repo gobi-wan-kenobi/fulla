@@ -37,15 +37,15 @@ export interface MonthTotals {
   incomeMinor: number;
 }
 
-/** Spent (expenses less refunds) and income in one calendar month. */
-export function monthTotals(rows: LocalRow[], month: string): MonthTotals {
+/** Spent (expenses less refunds) and income in one calendar month; income in `excluded` categories (outsideIncome) is not counted. */
+export function monthTotals(rows: LocalRow[], month: string, excluded: Set<string> = new Set()): MonthTotals {
   let spent = 0;
   let income = 0;
   for (const t of counted(rows)) {
     if (monthOf(t.date) !== month || !countsInTotals(t.kind)) continue;
     if (t.kind === "expense") spent += t.amount_minor;
     else if (t.kind === "refund") spent -= t.amount_minor;
-    else if (t.kind === "income") income += t.amount_minor;
+    else if (t.kind === "income" && !(t.category_id && excluded.has(t.category_id))) income += t.amount_minor;
   }
   return { spentMinor: spent, incomeMinor: income };
 }

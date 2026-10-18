@@ -11,6 +11,7 @@
 // no balance is saved for net worth.
 import type { PdfStatementResult, BalanceMismatch } from "./wealthsimplePdf";
 import { parseCsv } from "./csv";
+import { groupDividends } from "./dividends";
 import { INVESTMENT_CODES } from "./investmentPdf";
 import type { StatementLine } from "./types";
 
@@ -81,12 +82,13 @@ export function readWealthsimpleActivityCsv(text: string, householdCurrency = "C
     lines.push({ date: r.date, amountMinor: r.amount, description: clean(r.description) || r.code, role: what.role });
     posted.push(r.date);
   }
+  const grouped = groupDividends(lines, posted);
   const dates = rows.map((r) => r.date).sort();
   const start = dates[0];
   const end = dates[dates.length - 1];
   const label = rows.some((r) => r.code === "GRANT") ? "Wealthsimple RESP" : "Wealthsimple investment";
   return {
-    lines, posted,
+    lines: grouped.lines, posted: grouped.posted,
     balance: { openingMinor: opening, closingMinor: closing, balancesMinor, mismatches, closingMatches: null, ok },
     currency,
     period: `${start} to ${end}`,

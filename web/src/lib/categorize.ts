@@ -115,6 +115,23 @@ export function debtCategory(categories: Category[], kind: DebtKind | null): Cat
   return categories.find((c) => !c.archived && c.parent_id === parent.id && names.has(normalizeName(c.name))) ?? parent;
 }
 
+const GRANTS = WEB_DEFAULT_CATEGORIES.find((d) => d.key === INVESTMENT_INCOME_KEY)?.subcategories?.find((d) => d.key === "grants");
+
+/**
+ * Where a government grant into an RESP goes: the household's category left
+ * out of income under Investment income (Government grants, by its flag or
+ * any of its default names), else Investment income itself.
+ */
+export function grantsCategory(categories: Category[]): Category | null {
+  const parent = categoryForKey(categories, INVESTMENT_INCOME_KEY, "income");
+  const names = new Set(Object.values(GRANTS?.name ?? {}).map(normalizeName));
+  const live = categories.filter((c) => !c.archived && allows(c.applies_to, "income"));
+  return live.find((c) => parent && c.parent_id === parent.id && c.excluded_from_income)
+    ?? live.find((c) => parent && c.parent_id === parent.id && names.has(normalizeName(c.name)))
+    ?? live.find((c) => c.excluded_from_income)
+    ?? investmentIncomeCategory(categories, "dividend");
+}
+
 /** Fees (a card's annual fee, an account fee), else Other; null only when there is neither. */
 export function feesCategory(categories: Category[]): Category | null {
   return categoryForKey(categories, FEES_KEY, "expense") ?? fallbackCategory(categories, "expense");

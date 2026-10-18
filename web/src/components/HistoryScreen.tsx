@@ -3,7 +3,7 @@
 import { Check, ChevronLeft, ChevronRight, CloudOff, ListChecks, RefreshCw, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { byDay, categoriesFor, monthOf, monthSpendingSplit, monthTotals, recategorized, shiftMonth, signedAmount, today, withRecurrence } from "@/lib/ledger";
-import { countsInTotals, type Config, type Transaction } from "@/lib/model";
+import { countsInTotals, outsideIncome, type Config, type Transaction } from "@/lib/model";
 import { formatMoney } from "@/lib/money";
 import type { LocalRow } from "@/lib/sync";
 import { isUnmatchedTransfer, needsReview, UNMATCHED_TAG, withoutTag } from "@/lib/review";
@@ -67,7 +67,7 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh,
     review: rows.filter((r) => needsReview(r.tx)).length,
     unmatched: rows.filter((r) => isUnmatchedTransfer(r.tx)).length,
   }), [rows]);
-  const totals = useMemo(() => monthTotals(rows, month), [rows, month]);
+  const totals = useMemo(() => monthTotals(rows, month, outsideIncome(config.categories)), [rows, month, config.categories]);
   const split = useMemo(() => monthSpendingSplit(rows, month), [rows, month]);
   const chosenRows = rows.filter((r) => selected.has(r.tx.id));
   const bulkKinds = new Set(chosenRows.map((r) => r.tx.kind));

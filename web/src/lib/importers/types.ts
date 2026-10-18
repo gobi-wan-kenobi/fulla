@@ -24,7 +24,8 @@ export interface StatementLine {
    *  - transfer: money moved between the household's own accounts;
    *  - credit: a refund or credit on a card (reduces spending);
    *  - card-interest, fee: what the card or account charged;
-   *  - dividend, interest: what an investment account paid.
+   *  - dividend, interest: what an investment account paid;
+   *  - grant: a government grant into an RESP (the account's, not the household's income).
    */
   role?: LineRole | null;
   /** A purchase made in another currency: the amount in that currency (minor units, positive) and its code. */
@@ -32,7 +33,7 @@ export interface StatementLine {
   originalCurrency?: string | null;
 }
 
-export type LineRole = "card-payment" | "transfer" | "credit" | "card-interest" | "fee" | "dividend" | "interest";
+export type LineRole = "card-payment" | "transfer" | "credit" | "card-interest" | "fee" | "dividend" | "interest" | "grant";
 
 export interface SkippedLine {
   line: number;

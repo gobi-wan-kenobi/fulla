@@ -106,6 +106,13 @@ export interface Category {
   archived: boolean;
   /** Spending here is usually the same every period (0023); the default a transaction's recurrence gets. */
   fixed?: boolean;
+  /** Money in here is not the household's income (0030): a government grant into an RESP. Left out of the Overview's income. */
+  excluded_from_income?: boolean;
+}
+
+/** Ids of the categories whose money in is not counted as the household's income. */
+export function outsideIncome(categories: Category[]): Set<string> {
+  return new Set(categories.filter((c) => c.excluded_from_income).map((c) => c.id));
 }
 
 export interface CategorizationRule {

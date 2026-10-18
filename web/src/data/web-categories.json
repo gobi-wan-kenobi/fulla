@@ -196,7 +196,21 @@
         "de": "Kapitalerträge",
         "it": "Redditi da investimenti",
         "pt": "Rendimentos de investimentos"
-      }
+      },
+      "subcategories": [
+        {
+          "key": "grants",
+          "name": {
+            "en": "Government grants",
+            "es": "Subvenciones públicas",
+            "fr": "Subventions gouvernementales",
+            "de": "Staatliche Zuschüsse",
+            "it": "Contributi pubblici",
+            "pt": "Subsídios governamentais"
+          },
+          "excluded_from_income": true
+        }
+      ]
     }
   ]
 }

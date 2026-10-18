@@ -5,7 +5,7 @@
 import { DEFAULT_CATEGORIES } from "../defaults";
 import { importedId, sha256Hex, uuid5 } from "../ids";
 import type { Account, AppliesTo, CategorizationRule, Category, Member, Split, Transaction, TransactionKind } from "../model";
-import { type CategorySource, debtCategory, feesCategory, incomingKind, investmentIncomeCategory, knownMerchant, matchRule, merchantCategory, type MerchantMatch } from "../categorize";
+import { type CategorySource, debtCategory, feesCategory, grantsCategory, incomingKind, investmentIncomeCategory, knownMerchant, matchRule, merchantCategory, type MerchantMatch } from "../categorize";
 import { normalizeName } from "../text";
 import { REVIEW_TAG, withTag } from "../review";
 import { BANK_ACCOUNT, type KnownDebt, type KnownTransfer, OTHER_ACCOUNT, isTransferWithPerson, knownDebt, knownTransfer } from "../transfers";
@@ -158,6 +158,7 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
       case "fee": return feesCategory(categories); // a fee given back is a refund in Fees
       case "dividend": return line.amountMinor > 0 ? investmentIncomeCategory(categories, "dividend") : null;
       case "interest": return line.amountMinor > 0 ? investmentIncomeCategory(categories, "interest") : null;
+      case "grant": return line.amountMinor > 0 ? grantsCategory(categories) : null;
       default: return null;
     }
   };

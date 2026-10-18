@@ -1883,6 +1883,22 @@ test('new households start with Fees, Investment income and Credit card interest
   assert.equal(cats.find((c) => c.name === 'Personal loan').fixed, true);
 });
 
+test('new households get Government grants under Investment income, left out of income; a save keeps the flag (0030)', (ctx) => {
+  const cats = rpc(ctx.db, ctx.alice, 'fulla_config_get', { p_household_id: ctx.hh }).categories;
+  const inv = cats.find((c) => c.name === 'Investment income' && c.parent_id === null);
+  const grants = cats.find((c) => c.name === 'Government grants');
+  assert.equal(grants.parent_id, inv.id);
+  assert.equal(grants.applies_to, 'income');
+  assert.equal(grants.excluded_from_income, true);
+  assert.equal(inv.excluded_from_income, false);
+  assert.ok(cats.filter((c) => c.id !== grants.id).every((c) => c.excluded_from_income === false));
+  // Saving it (an older client, or a rename) leaves the flag as it was.
+  const saved = rpc(ctx.db, ctx.alice, 'fulla_category_upsert', { p_household_id: ctx.hh, p_category: { id: grants.id, name: 'Example grants', applies_to: 'income', parent_id: inv.id, icon: grants.icon, color_index: grants.color_index, sort: grants.sort } })
+    .categories.find((c) => c.id === grants.id);
+  assert.equal(saved.name, 'Example grants');
+  assert.equal(saved.excluded_from_income, true);
+});
+
 test('an account can be an investment account, and still nothing but the known types (0029)', (ctx) => {
   const id = uuid();
   const saved = rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id, name: 'Example TFSA', type: 'investment', institution: 'Example Broker', last4: 'XY7Z' } });

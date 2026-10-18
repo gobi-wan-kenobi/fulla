@@ -40,7 +40,7 @@ describe("a Wealthsimple activity export", () => {
     expect(r.lines.map((l) => [l.date, l.amountMinor, l.role, l.description])).toEqual([
       ["2030-03-02", 125, "dividend", "EXA - Example Index ETF: Cash dividend distribution"],
       ["2030-03-07", 10000, "transfer", "Deposit"],
-      ["2030-03-14", 2000, "dividend", "Grant payment"],
+      ["2030-03-14", 2000, "grant", "Grant payment"],
       ["2030-03-31", -19, "fee", "Non-resident tax"],
       ["2030-03-31", -106, "fee", "Management fees"],
     ]);

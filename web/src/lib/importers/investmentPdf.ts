@@ -13,6 +13,7 @@
 // one before. Works on text already taken out of the PDF (pdf.ts).
 import type { LineRole, StatementLine } from "./types";
 import { type PdfCell, type PdfLine, type PdfStatementResult, PdfStatementError, pdfLines, type PdfPage, type BalanceMismatch } from "./wealthsimplePdf";
+import { groupDividends } from "./dividends";
 import { lineText, money } from "./statementText";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -32,8 +33,8 @@ export const INVESTMENT_CODES: Record<string, { role: LineRole; sign: 1 | -1 }> 
   HST: { role: "fee", sign: -1 }, GST: { role: "fee", sign: -1 }, PST: { role: "fee", sign: -1 },
   // A fee given back ("MANAGEMENT_FEE_REIMBURSEMENT"): less spent on fees.
   REIMB: { role: "fee", sign: 1 },
-  // A government grant paid into an RESP (CESG and the like): what the account earned, not a transfer.
-  GRANT: { role: "dividend", sign: 1 },
+  // A government grant paid into an RESP (CESG and the like): the account's, not a transfer and not the household's income.
+  GRANT: { role: "grant", sign: 1 },
 };
 
 /** True when the text is a Wealthsimple investment account statement. */
@@ -191,10 +192,11 @@ export function readWealthsimpleInvestment(pages: PdfPage[]): PdfStatementResult
     });
     posted.push(r.date);
   }
+  const grouped = groupDividends(out, posted);
   const tail = accountNumber(lines);
   const label = `Wealthsimple ${kind}`;
   return {
-    lines: out, posted,
+    lines: grouped.lines, posted: grouped.posted,
     balance: {
       openingMinor: summary("CAD").last, closingMinor: summary("CAD").closing, balancesMinor: [], mismatches,
       closingMatches: ok, ok: ok && mismatches.length === 0,
