@@ -11,7 +11,7 @@ import type { Account, Category, Transaction } from "@/lib/model";
 import { requireCurrency } from "@/lib/money";
 import { UNMATCHED_TAG, hasTag } from "@/lib/review";
 import { proposedStatementAccount } from "@/lib/statementAccount";
-import { amexStyle, capitalOneStyle, investmentStyle } from "./statementPdfFixtures";
+import { amexStyle, capitalOneStyle, investmentStyle, singleCurrencyInvestmentStyle } from "./statementPdfFixtures";
 import { makePdf } from "./pdfFixture";
 import { ALICE, HOUSEHOLD, category } from "./support";
 
@@ -112,6 +112,23 @@ describe("reading statements", () => {
     expect((await read(investmentStyle())).statement.version).toBe(1);
   });
 
+  it("reads a statement in one currency, its activity over several pages, and a fee given back", async () => {
+    const r = await read(singleCurrencyInvestmentStyle());
+    expect(r.statement).toMatchObject({
+      institution: "Wealthsimple", type: "investment", last4: "PLE7", closingBalanceMinor: 123456, closingDate: "2030-02-28",
+      periodStart: "2030-02-01", label: "Wealthsimple Non-registered", version: 1,
+    });
+    expect(r.balance).toMatchObject({ ok: true, openingMinor: 500, closingMinor: 510, mismatches: [] });
+    expect(r.ignored).toBe(1); // the purchase
+    expect(r.lines.map((l) => [l.date, l.amountMinor, l.role, l.description])).toEqual([
+      ["2030-02-02", 40, "dividend", "EXAMPLECO: Cash dividend distribution"],
+      ["2030-02-03", 13, "fee", "MANAGEMENT_FEE_REIMBURSEMENT"],
+      ["2030-02-07", 10000, "transfer", "Money transfer into the account"],
+      ["2030-02-09", -5, "fee", "Non-resident tax"],
+      ["2030-02-28", -38, "fee", "Example Portfolio Service Fee"],
+    ]);
+  });
+
   it("says when a PDF is a statement Fulla does not read", async () => {
     await expect(read(makePdf([[{ x: 40, y: 500, text: "Example Bank: your monthly statement" }]]))).rejects.toThrow(PdfStatementError);
   });
@@ -174,6 +191,38 @@ describe("importing card and investment statements", () => {
     // Dividends are investment income; tax withheld is a fee.
     expect(out.insert.filter((t) => t.kind === "income").map((t) => t.category_id)).toEqual([INVEST.id, INVEST.id]);
     expect(out.insert.find((t) => t.kind === "expense")!.category_id).toBe(FEES.id);
+  });
+
+  it("matches an activity export's deposits to the chequing transfers into a stand-in, and never pairs two transfers out", () => {
+    const resp = acct(330, "Example RESP", "investment");
+    const out = (n: number, date: string, amount: number, to: string): Transaction => ({
+      id: id(n), kind: "transfer", date, amount_minor: amount, category_id: null, account_id: CHEQUING.id, to_account_id: to,
+      paid_by_member_id: null, to_member_id: null, split: null, recurrence: "variable", note: "Transfer out", tags: [UNMATCHED_TAG], extras: {},
+      status: "active", recurring_rule_id: null, occurrence_date: null, import_fingerprint: String(n).repeat(8), original_currency: null, created_at: "", client_updated_at: "",
+    });
+    // Two transfers out of chequing on one day, same amount, to the RESP and to another stand-in: only the RESP's is matched.
+    const other = acct(331, "Other account", "other");
+    const spend: Transaction = { ...out(530, "2030-03-02", 450, CHEQUING.id), kind: "expense", to_account_id: null, category_id: OTHER.id, tags: [], note: "EXAMPLE SHOP" };
+    const rows = [out(531, "2030-03-07", 10000, resp.id), out(532, "2030-03-07", 10000, other.id), out(533, "2030-03-14", 10000, resp.id), spend];
+    const lines: StatementLine[] = [
+      { date: "2030-03-07", amountMinor: 10000, description: "Deposit", role: "transfer" },
+      { date: "2030-03-14", amountMinor: 10000, description: "Deposit", role: "transfer" },
+      { date: "2030-03-14", amountMinor: 2000, description: "Grant payment", role: "dividend" },
+      { date: "2030-03-31", amountMinor: 13, description: "MANAGEMENT_FEE_REIMBURSEMENT", role: "fee" },
+    ];
+    const info: StatementAccountInfo = { institution: "Wealthsimple", type: "investment", last4: null, closingBalanceMinor: null, closingDate: "2030-03-31", periodStart: "2030-03-01", version: 1 };
+    const r = importInto(resp.id, lines, rows, [CHEQUING, resp, other], info);
+    expect(r.matched).toBe(2);
+    expect(r.unmatched).toBe(0);
+    const live = r.rows.filter((t) => t.status === "active");
+    expect(live.filter((t) => t.kind === "transfer").map((t) => [t.id, t.account_id, t.to_account_id, hasTag(t, UNMATCHED_TAG)])).toEqual([
+      [id(531), CHEQUING.id, resp.id, false], [id(532), CHEQUING.id, other.id, true], [id(533), CHEQUING.id, resp.id, false],
+    ]);
+    // Never a transfer out of one account paired with another transfer out.
+    expect(live.filter((t) => t.kind === "transfer" && t.account_id === resp.id)).toEqual([]);
+    expect(live.find((t) => t.kind === "income")!.category_id).toBe(INVEST.id);
+    // A fee given back is less spent on fees.
+    expect(live.find((t) => t.kind === "refund")).toMatchObject({ category_id: FEES.id, amount_minor: 13 });
   });
 
   it("replaces an earlier version of the same statement, and ignores an earlier one imported after a later", () => {

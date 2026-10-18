@@ -11,7 +11,7 @@ import {
   DATE_FORMATS, type ImportProfile, type PdfProblem, type PdfStatementResult, type SavedProfile, type StatementFormat,
   type StatementResult, PdfStatementError, columnValues, decodeText, detectFormat, dropRepeatedBankIds, extractPdfPages,
   guessDelimiter, guessProfile, isPdf, newAccounts, newCategories, ofxCurrency, previewCsv, profileFromJson, profileToJson,
-  accountIdFor, buildImport, propose, readCsv, readOfx, readQif, readPdfStatement,
+  accountIdFor, buildImport, propose, readCsv, readOfx, readQif, readPdfStatement, readWealthsimpleActivityCsv,
 } from "@/lib/importers";
 import { loadPdfJs } from "@/lib/importers/pdfBrowser";
 import { categoriesFor } from "@/lib/ledger";
@@ -98,6 +98,17 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
       } finally {
         setReadingPdf(false);
       }
+      return;
+    }
+    // A Wealthsimple investment account's activity export: read like its PDF statement.
+    const activity = readWealthsimpleActivityCsv(decodeText(read), currency.code);
+    if (activity) {
+      setUnreadable(false);
+      setPdf(activity);
+      setFileName(file.name);
+      setFormat("pdf");
+      setProfileId(null);
+      setBytes(read);
       return;
     }
     const f = detectFormat(read);

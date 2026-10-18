@@ -155,7 +155,7 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
   const statedCategory = (line: StatementLine): Category | null => {
     switch (line.role) {
       case "card-interest": return line.amountMinor < 0 ? debtCategory(categories, "card_interest") : null;
-      case "fee": return line.amountMinor < 0 ? feesCategory(categories) : null;
+      case "fee": return feesCategory(categories); // a fee given back is a refund in Fees
       case "dividend": return line.amountMinor > 0 ? investmentIncomeCategory(categories, "dividend") : null;
       case "interest": return line.amountMinor > 0 ? investmentIncomeCategory(categories, "interest") : null;
       default: return null;
@@ -190,7 +190,7 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
     if (r.pocket || r.transfer) return "transfer";
     if (r.line.amountMinor < 0) return "expense";
     // A refund or credit on a card: less spending, in the category of what was bought.
-    if (r.line.role === "credit") return "refund";
+    if (r.line.role === "credit" || r.line.role === "fee") return "refund";
     if (r.rule?.action.category_id && categories.find((c) => c.id === r.rule!.action.category_id)?.applies_to === "expense") return "refund";
     if (r.merchant && incomingKind(r.line.description) === "refund" && merchantCategory(categories, r.merchant, "refund")) return "refund";
     return "income";

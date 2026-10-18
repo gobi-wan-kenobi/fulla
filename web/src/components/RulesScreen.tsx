@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { categorizeExisting } from "@/lib/categorize";
 import { recategorized, visible } from "@/lib/ledger";
 import type { CategorizationRule, Category, Config, Transaction } from "@/lib/model";
+import { NO_STATEMENT_TAG } from "@/lib/review";
 import { canManage, deletedRule, newRule, shownRules } from "@/lib/rules";
 import type { LocalRow } from "@/lib/sync";
 import { Icon } from "./Icon";
@@ -120,7 +121,7 @@ export function RulesScreen({ config, rows, onConfig, onBulk, onClose }: {
               <div className="flex-1 min-w-0">
                 <div className={`t-body truncate ${r.active ? "" : "text-ink-muted"}`}>“{r.pattern}”</div>
                 <div className="t-secondary text-ink-muted truncate">
-                  {r.action.category_id ? name(r.action.category_id) : r.action.kind === "transfer" ? "Transfer" : "Tags"}
+                  {r.action.category_id ? name(r.action.category_id) : r.action.kind === "transfer" ? (r.action.tags?.includes(NO_STATEMENT_TAG) ? "Transfer, no other statement" : "Transfer") : "Tags"}
                   {!r.active && " · paused"}
                 </div>
               </div>

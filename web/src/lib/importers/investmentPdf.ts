@@ -20,15 +20,20 @@ const PERIOD = /^(\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})$/;
 const KINDS: [RegExp, string][] = [
   [/\bTFSA\b/, "TFSA"], [/\bFHSA\b/, "FHSA"], [/\bRRSP\b/, "RRSP"], [/\bRRIF\b/, "RRIF"], [/\bRESP\b/, "RESP"], [/\bLIRA\b/, "LIRA"],
   [/\bcrypto account\b/i, "Crypto"], [/\b(non-registered|personal|joint|individual) account\b/i, "Non-registered"],
+  [/\bnon-registered\b/i, "Non-registered"], // "Order Execution Only Non-Registered Cash Account"
 ];
 
 /** What each activity code is, by the codes the statement's legend uses; anything else stays inside the account. */
-const CODES: Record<string, { role: LineRole; sign: 1 | -1 }> = {
+export const INVESTMENT_CODES: Record<string, { role: LineRole; sign: 1 | -1 }> = {
   CONT: { role: "transfer", sign: 1 }, DEP: { role: "transfer", sign: 1 }, TRFIN: { role: "transfer", sign: 1 }, TRFINTF: { role: "transfer", sign: 1 },
   EFT: { role: "transfer", sign: 1 }, WD: { role: "transfer", sign: -1 }, WDQ: { role: "transfer", sign: -1 }, TRFOUT: { role: "transfer", sign: -1 },
   TRFOUTTF: { role: "transfer", sign: -1 }, DIV: { role: "dividend", sign: 1 }, DIST: { role: "dividend", sign: 1 }, INT: { role: "interest", sign: 1 },
   FPLINT: { role: "interest", sign: 1 }, FEE: { role: "fee", sign: -1 }, NRT: { role: "fee", sign: -1 }, WHT: { role: "fee", sign: -1 },
   HST: { role: "fee", sign: -1 }, GST: { role: "fee", sign: -1 }, PST: { role: "fee", sign: -1 },
+  // A fee given back ("MANAGEMENT_FEE_REIMBURSEMENT"): less spent on fees.
+  REIMB: { role: "fee", sign: 1 },
+  // A government grant paid into an RESP (CESG and the like): what the account earned, not a transfer.
+  GRANT: { role: "dividend", sign: 1 },
 };
 
 /** True when the text is a Wealthsimple investment account statement. */
@@ -107,11 +112,18 @@ export function readWealthsimpleInvestment(pages: PdfPage[]): PdfStatementResult
   // The cash summary, per currency.
   const cols = cashColumns(lines);
   const summaryLine = (re: RegExp) => lines.find((l) => re.test(l.cells[0]?.text ?? ""));
+  // A statement in one currency has no CAD and USD columns: the summary's amount is the first one after its label.
+  const single = cols ? null : (/all figures in \$(CAD|USD)/i.exec(all)?.[1]?.toUpperCase() ?? "CAD") as "CAD" | "USD";
+  const firstMoney = (l: PdfLine | undefined) => {
+    for (const c of l?.cells.slice(1) ?? []) { const v = money(c.text); if (v !== null) return v; }
+    return null;
+  };
   const summary = (cur: "CAD" | "USD") => {
     const col = cur === "CAD" ? cols?.cad ?? null : cols?.usd ?? null;
+    const at = (re: RegExp) => (cols ? inColumn(summaryLine(re), col) : cur === single ? firstMoney(summaryLine(re)) : null);
     return {
-      last: inColumn(summaryLine(/^last statement cash balance$/i), col), paidIn: inColumn(summaryLine(/^total cash paid in$/i), col),
-      paidOut: inColumn(summaryLine(/^total cash paid out$/i), col), closing: inColumn(summaryLine(/^closing cash balance$/i), col),
+      last: at(/^last statement cash balance$/i), paidIn: at(/^total cash paid in$/i),
+      paidOut: at(/^total cash paid out$/i), closing: at(/^closing cash balance$/i),
     };
   };
 
@@ -124,6 +136,8 @@ export function readWealthsimpleInvestment(pages: PdfPage[]): PdfStatementResult
     const t = lineText(l);
     const head = /^(CAD|USD) Activity\b/i.exec(t);
     if (head) { cur = head[1].toUpperCase() as "CAD" | "USD"; open = null; continue; }
+    // One currency: "Activity - Current period", on every page the activity runs over.
+    if (single && /^activity\s*-\s*current period$/i.test(t.trim())) { cur = single; open = null; continue; }
     if (!cur) continue;
     // The date and the code, as two cells or run together into one.
     const joined = /^(\d{4}-\d{2}-\d{2})\s+([A-Z]{2,12})$/.exec(l.cells[0]?.text ?? "");
@@ -165,7 +179,7 @@ export function readWealthsimpleInvestment(pages: PdfPage[]): PdfStatementResult
   const posted: string[] = [];
   let ignored = 0;
   for (const r of rows) {
-    const what = CODES[r.code];
+    const what = INVESTMENT_CODES[r.code];
     const amount = r.balance === null ? 0 : (r.credit ?? 0) - (r.debit ?? 0);
     if (!what || amount === 0) { ignored++; continue; }
     const usd = r.cur === "USD";

@@ -7,6 +7,8 @@ import { accountIdFor, propose, type ProposeInput } from "@/lib/importers";
 import { monthSpendingSplit, monthTotals } from "@/lib/ledger";
 import type { StatementLine } from "@/lib/importers";
 import type { LocalRow } from "@/lib/sync";
+import { NO_STATEMENT_TAG, UNMATCHED_TAG } from "@/lib/review";
+import { matchTransfers } from "@/lib/transferMatch";
 import { BANK_ACCOUNT, CREDIT_CARD, OTHER_ACCOUNT, isConsumerLender, isPersonToPerson, knownDebt, knownTransfer } from "@/lib/transfers";
 
 import { ALICE, HOUSEHOLD, LEISURE, MAIN, SALARY, category, config } from "./support";
@@ -174,6 +176,25 @@ describe("transfers in an import", () => {
       expect(x.source).toBe("debt");
       expect(x.matchedDebt).toEqual({ kind: "bnpl" });
     }
+  });
+
+  it("a rule can say a transfer has no other statement: it is never left unmatched", () => {
+    const JAR = "00000000-0000-4000-8000-000000000390";
+    const rules = [{ id: "r-jar", pattern: "example jar", action: { kind: "transfer" as const, to_account_id: JAR, tags: [NO_STATEMENT_TAG] }, sort: 0, active: true }];
+    const p = plan([
+      { date: "2030-01-09", amountMinor: -300, description: "Transfer out to Example Jar" },
+      { date: "2030-01-09", amountMinor: -400, description: "Transfer out to Holiday Fund" },
+    ], { rules });
+    expect(p[0].transaction).toMatchObject({ kind: "transfer", account_id: MAIN, to_account_id: JAR, category_id: null });
+    expect(p[0].transaction.tags).toContain(NO_STATEMENT_TAG);
+    const m = matchTransfers({ accountId: MAIN, fresh: p.map((x) => x.transaction), existing: [], accounts: config.accounts });
+    const jar = m.insert.find((t) => t.to_account_id === JAR)!;
+    expect(jar.tags).not.toContain(UNMATCHED_TAG);
+    // Out of spending, like any transfer; the transfer with no rule still waits for its other statement.
+    const rows: LocalRow[] = m.insert.map((tx) => ({ tx, state: "synced", base: null }));
+    expect(monthTotals(rows, "2030-01").spentMinor).toBe(0);
+    expect(m.unmatched).toBe(1);
+    expect(m.insert.find((t) => t.to_account_id !== JAR)!.tags).toContain(UNMATCHED_TAG);
   });
 
   it("keep the same ids, so a file imported before is still recognised", () => {

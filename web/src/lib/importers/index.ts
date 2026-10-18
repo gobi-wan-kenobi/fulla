@@ -16,5 +16,6 @@ export * from "./pdf";
 export * from "./statementText";
 export * from "./cardPdf";
 export * from "./investmentPdf";
+export * from "./investmentCsv";
 export * from "./pdfStatement";
 export * from "./pipeline";

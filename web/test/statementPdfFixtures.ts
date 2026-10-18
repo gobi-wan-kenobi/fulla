@@ -105,3 +105,42 @@ export function investmentStyle(opts: { version?: number; withLoan?: boolean } =
   ];
   return makePdf([p1, p2], size);
 }
+
+/**
+ * A non-registered account's statement in one currency: no CAD and USD
+ * columns, the cash summary's amounts beside their labels, and its activity
+ * under "Activity - Current period" on two pages. Invented, like the rest.
+ */
+export function singleCurrencyInvestmentStyle(): Uint8Array {
+  const p1: Text[] = [
+    ...row(798, [[224, "ORDER EXECUTION ONLY ACCOUNT"]], 9),
+    ...row(782, [[224, "All figures in $CAD unless otherwise specified"]], 8),
+    ...row(762, [[246, "Account No."], [366, "Owner"], [468, "Statement Period"]], 8),
+    ...row(749, [[237, "ZZ9EXAMPLE7CAD"], [335, "Example Person"], [457, "2030-02-01 - 2030-02-28"]], 8),
+    ...row(700, [[295, "Order Execution Only Non-Registered Cash Account"]], 8),
+    ...row(605, [[222, "Total Portfolio"], [327, "$1,234.56"], [369, "100.00"]], 8),
+    ...row(528, [[49, "Portfolio Cash"]], 11),
+    ...row(500, [[49, "Last Statement Cash Balance"], [183, "$5.00"], [241, "Cash Paid In"], [302, "Deposits"], [370, "$100.00"]], 8),
+    ...row(488, [[49, "Total Cash Paid In"], [175, "$100.53"], [302, "Proceeds from"]], 8),
+    ...row(477, [[49, "Total Cash Paid Out"], [175, "$100.43"], [302, "sales"], [378, "$0.00"]], 8),
+    ...row(466, [[49, "Closing Cash Balance"], [183, "$5.10"], [302, "Dividends"], [378, "$0.40"]], 8),
+    ...row(100, [[34, "Example text: Wealthsimple Investments Inc."]], 7),
+  ];
+  const head = (y: number) => [
+    ...row(y, [[49, "Activity - Current period"]], 11),
+    ...row(y - 16, [[48, "Date"], [81, "Transaction"], [128, "Description"], [440, "Debit"], [480, "Credit"], [530, "Balance"]], 8),
+  ];
+  const p2: Text[] = [
+    ...head(797),
+    ...row(760, [[37, "2030-02-02"], [81, "DIV"], [129, "EXAMPLECO: Cash dividend distribution"], [456, "$0.00"], [494, "$0.40"], [539, "$5.40"]], 8),
+    ...row(740, [[37, "2030-02-03"], [81, "REIMB"], [129, "MANAGEMENT_FEE_REIMBURSEMENT (executed at 2030-02-03)"], [456, "$0.00"], [494, "$0.13"], [539, "$5.53"]], 8),
+    ...row(720, [[37, "2030-02-07"], [81, "TRFIN"], [129, "Money transfer into the account (executed at 2030-02-07)"], [456, "$0.00"], [490, "$100.00"], [535, "$105.53"]], 8),
+  ];
+  const p3: Text[] = [
+    ...head(797),
+    ...row(760, [[37, "2030-02-08"], [81, "BUY"], [129, "EXAMPLE ETF: Bought 1.0000 shares at $100.00 per share"], [450, "$100.00"], [494, "$0.00"], [539, "$5.53"]], 8),
+    ...row(740, [[37, "2030-02-09"], [81, "NRT"], [129, "Non-resident tax (executed at 2030-02-09)"], [456, "$0.05"], [494, "$0.00"], [539, "$5.48"]], 8),
+    ...row(720, [[37, "2030-02-28"], [81, "FEE"], [129, "Example Portfolio Service Fee (executed at 2030-02-28)"], [456, "$0.38"], [494, "$0.00"], [539, "$5.10"]], 8),
+  ];
+  return makePdf([p1, p2, p3], size);
+}

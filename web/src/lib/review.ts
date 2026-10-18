@@ -8,6 +8,10 @@
  *  - UNMATCHED_TAG: a transfer seen on one statement only. Importing the
  *    other account's statement matches it (transferMatch.ts) and clears it;
  *    so does saying it is fine.
+ *  - NO_STATEMENT_TAG: a transfer to or from an account that never has a
+ *    statement of its own (a child's cash jar, a wallet). A household rule
+ *    puts it on ("When a note contains …, it is a transfer to that account,
+ *    no other statement"), so the transfer is never left unmatched.
  *  - LEG_TAG_PREFIX + 16 hex: the statement line on the other account that a
  *    transfer was matched with, so importing that statement again adds nothing.
  *
@@ -18,6 +22,7 @@ import type { Transaction } from "./model";
 export const REVIEW_TAG = "fulla:review";
 export const UNMATCHED_TAG = "fulla:unmatched-transfer";
 export const LEG_TAG_PREFIX = "fulla:leg:";
+export const NO_STATEMENT_TAG = "fulla:no-statement";
 
 export function hasTag(t: Pick<Transaction, "tags">, tag: string): boolean {
   return (t.tags ?? []).includes(tag);

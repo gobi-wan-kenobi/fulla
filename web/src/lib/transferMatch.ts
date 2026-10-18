@@ -32,7 +32,7 @@
  * as a leg tag on the first). Pure: the import screen writes what it returns.
  */
 import type { Account, Transaction } from "./model";
-import { UNMATCHED_TAG, hasTag, legTag, legTags, withTag, withoutTag } from "./review";
+import { NO_STATEMENT_TAG, UNMATCHED_TAG, hasTag, legTag, legTags, withTag, withoutTag } from "./review";
 import { isPersonToPerson } from "./transfers";
 import { normalizeName } from "./text";
 
@@ -162,6 +162,11 @@ export function matchTransfers(input: MatchInput): MatchResult {
 
   // 1. The import's own lines.
   for (const t of input.fresh) {
+    // A transfer a rule says no other statement will show (review.ts): done as it is.
+    if (t.kind === "transfer" && hasTag(t, NO_STATEMENT_TAG)) {
+      insert.push(withoutTag(t, UNMATCHED_TAG));
+      continue;
+    }
     if (t.kind === "transfer") {
       const side = t.account_id === X || t.to_account_id === X ? X : null;
       if (!side) {
