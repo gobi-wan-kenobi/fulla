@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { reviewed } from "./review";
 import { api } from "./api";
 import { randomId } from "./ids";
 import type { Account, Category, Config, Transaction } from "./model";
@@ -160,7 +161,7 @@ export function useHousehold(householdId: string): Household {
     async (tx: Transaction, existing?: LocalRow) => {
       const now = new Date();
       const config = state.current.config;
-      const row = existing ? editRow(existing, tx, now) : createRow(config ? sharedPotForNew(tx, config.household) : tx, now);
+      const row = existing ? editRow(existing, reviewed(existing.tx, tx), now) : createRow(config ? sharedPotForNew(tx, config.household) : tx, now);
       state.current.rows[row.tx.id] = row;
       commit();
       await sync();
@@ -182,7 +183,7 @@ export function useHousehold(householdId: string): Household {
       const now = new Date();
       for (const { tx, existing } of changes) {
         const current = state.current.rows[existing.tx.id] ?? existing;
-        state.current.rows[existing.tx.id] = editRow(current, tx, now);
+        state.current.rows[existing.tx.id] = editRow(current, reviewed(current.tx, tx), now);
       }
       commit();
       await sync();

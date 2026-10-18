@@ -1,24 +1,31 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// POST /api/categorize: the optional model step of categorisation, for a
-// signed-in person only. The browser sends the lines no rule or known
-// merchant recognised; the answers are mapped onto the household's
-// categories in the browser (lib/categorizer.ts). Off without OPENAI_API_KEY.
+// POST /api/categorize: the categorizer step of categorisation, for a
+// signed-in person only. The browser sends the lines no rule, transfer or
+// debt pattern, or known merchant recognised; the answers are mapped onto the
+// household's categories in the browser (lib/categorizer.ts), and an unsure
+// one is sent to review. Jev by default (TYPESAFE_API_KEY); off without a key.
 import { NextResponse } from "next/server";
-import { askModel, categorizerEnabled, readItems } from "@/lib/server/categorizer";
+import { categorize, provider, readItems } from "@/lib/server/categorizer";
+import { JEV_CUTOFF, JEV_MODEL } from "@/lib/server/jev";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// A cold fine-tuned model can take most of a minute to answer the first time (30 s timeout, one retry).
 export const maxDuration = 120;
 
 const env = () => ({
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   FULLA_CATEGORIZER_MODEL: process.env.FULLA_CATEGORIZER_MODEL,
   OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+  TYPESAFE_API_KEY: process.env.TYPESAFE_API_KEY,
+  FULLA_CATEGORIZER: process.env.FULLA_CATEGORIZER,
 });
 
 export async function GET() {
-  return NextResponse.json({ enabled: categorizerEnabled(env()) }, { headers: { "cache-control": "no-store" } });
+  const p = provider(env());
+  return NextResponse.json(
+    { enabled: p !== "off", provider: p, ...(p === "jev" ? { model: JEV_MODEL, review_below: JEV_CUTOFF } : {}) },
+    { headers: { "cache-control": "no-store" } },
+  );
 }
 
 /** True when the bearer token is a live session of this project's Supabase Auth. */
@@ -37,7 +44,7 @@ async function signedIn(req: Request): Promise<boolean> {
 
 export async function POST(req: Request) {
   const e = env();
-  if (!categorizerEnabled(e)) return NextResponse.json({ results: {}, stopped: "off" });
+  if (provider(e) === "off") return NextResponse.json({ results: {}, stopped: "off" });
   if (!(await signedIn(req))) return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
   let body: unknown;
   try {
@@ -47,5 +54,5 @@ export async function POST(req: Request) {
   }
   const items = readItems(body);
   if (!items) return NextResponse.json({ error: "validation_failed" }, { status: 400 });
-  return NextResponse.json(await askModel(items, e), { headers: { "cache-control": "no-store" } });
+  return NextResponse.json(await categorize(items, e), { headers: { "cache-control": "no-store" } });
 }

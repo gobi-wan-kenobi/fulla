@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, categorizer } from "@/lib/api";
 import { fallbackCategory } from "@/lib/categorize";
 import { type ModelAnswer, modelCategory, modelTransfer } from "@/lib/categorizer";
+import { history, howOftenSeen } from "@/lib/categorize/facts";
+import { REVIEW_TAG, withTag } from "@/lib/review";
 import { randomId } from "@/lib/ids";
 import {
   DATE_FORMATS, type ImportProfile, type PdfProblem, type PdfStatementResult, type SavedProfile, type StatementFormat,
@@ -163,6 +165,11 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
     void categorizer.enabled().then((on) => live && setModelOn(on));
     return () => { live = false; };
   }, []);
+  // How often each payee turns up, from what the household has and this file (categorize/facts.ts).
+  const seen = useMemo(() => history([
+    ...rows.filter((r) => r.tx.status === "active").map((r) => ({ description: r.tx.note, date: r.tx.date, amountMinor: r.tx.amount_minor })),
+    ...fresh.map((p) => ({ description: p.line.description, date: p.line.date, amountMinor: p.line.amountMinor })),
+  ]), [rows, fresh]);
   const unknown = useMemo(
     () => fresh.filter((p) => p.source === "fallback" && isCategorised(p.transaction.kind) && !asked.current.has(p.transaction.id)),
     [fresh],
@@ -171,7 +178,8 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
     if (!modelOn || unknown.length === 0) return;
     const items = unknown.slice(0, 200).map((p) => ({
       id: p.transaction.id, date: p.transaction.date, description: p.line.description, amount_minor: p.transaction.amount_minor,
-      minor_units: currency.minorUnits, institution: accounts.find((a) => a.id === p.transaction.account_id)?.name ?? null,
+      minor_units: currency.minorUnits, direction: p.line.amountMinor < 0 ? ("out" as const) : ("in" as const),
+      how_often_seen: howOftenSeen(p.line.description, seen),
     }));
     for (const i of items) asked.current.add(i.id);
     setAsking((n) => n + items.length);
@@ -179,7 +187,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
       setAnswers((a) => ({ ...a, ...got }));
       setAsking((n) => Math.max(0, n - items.length));
     });
-  }, [modelOn, unknown, currency.minorUnits, accounts]);
+  }, [modelOn, unknown, currency.minorUnits, seen]);
   const createdCategories = useMemo(() => newCategories(proposals), [proposals]);
   const createdAccounts = useMemo(() => newAccounts(proposals), [proposals]);
   // The account a model transfer goes to: the household's of that name, one this import makes, or a new one.
@@ -190,16 +198,18 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
       ?? { id: accountIdFor(config.household.id, name), name, type, opening_balance_minor: 0, opening_balance_date: null,
         round_up_to: null, round_up_multiplier: null, sort: config.accounts.length + createdAccounts.length, archived: false };
   };
+  /** The categorizer was unsure: the line stays in Other, marked for review. */
+  const toReview = (t: Transaction) => !!answers[t.id]?.review;
   type Guess = { transfer: null; category: Category; fixed: boolean } | { transfer: Account; direction: "out" | "in"; category: null };
   const modelGuess = (t: Transaction, description: string): Guess | null => {
     const a = answers[t.id];
-    if (!a) return null;
+    if (!a || a.review) return null;
     const move = modelTransfer(a, description, t.kind);
     if (move) {
       const other = accountNamed(move.counterpart, move.counterpartType);
       if (other.id !== t.account_id) return { transfer: other, direction: move.direction, category: null };
     }
-    const c = modelCategory(config.categories, a, t.kind);
+    const c = modelCategory(config.categories, a, t.kind, description);
     // Fixed or flexible is the category's to say (categories.fixed), never the model's.
     return c ? { transfer: null, category: c, fixed: !!c.fixed } : null;
   };
@@ -247,7 +257,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
           return { ...t, category_id: chosen, recurrence: c?.fixed ? ("fixed" as const) : t.recurrence };
         }
         const guess = p.source === "fallback" ? modelGuess(t, p.line.description) : null;
-        if (!guess) return t;
+        if (!guess) return p.source === "fallback" && toReview(t) ? withTag(t, REVIEW_TAG) : t;
         if (guess.category === null) {
           if (!config.accounts.some((a) => a.id === guess.transfer.id)) modelAccounts.set(guess.transfer.id, guess.transfer);
           return asTransfer(t, guess);
@@ -396,6 +406,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
             const by = (src: string) => fresh.filter((p) => p.source === src).length;
             const guessed = fresh.filter((p) => p.source === "fallback" && !overrides[p.transaction.id]).map((p) => modelGuess(p.transaction, p.line.description)).filter(Boolean);
             const modelled = guessed.length;
+            const reviewing = fresh.filter((p) => p.source === "fallback" && !overrides[p.transaction.id] && toReview(p.transaction)).length;
             const moved = fresh.filter((p) => p.transaction.kind === "transfer").length + guessed.filter((g) => g!.category === null).length;
             const parts = [
               by("rule") && `${by("rule")} by your rules`,
@@ -403,7 +414,8 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
               by("debt") && `${by("debt")} debt payments`,
               by("merchant") && `${by("merchant")} known shops`,
               modelled && `${modelled} by the categorizer`,
-              by("fallback") - modelled > 0 && `${by("fallback") - modelled} to Other`,
+              reviewing && `${reviewing} to review`,
+              by("fallback") - modelled - reviewing > 0 && `${by("fallback") - modelled - reviewing} to Other`,
             ].filter(Boolean);
             return parts.length > 0 ? <p className="t-secondary text-ink-muted px-5" data-testid="sorted-summary">Sorted: {parts.join(" · ")}{asking > 0 ? " · asking the categorizer…" : ""}</p> : null;
           })()}
@@ -451,6 +463,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
                         p.source === "rule" && p.matchedRule ? <span data-testid="by-rule">· by rule “{p.matchedRule.pattern}”</span>
                           : p.source === "merchant" ? <span data-testid="by-merchant">· known shop</span>
                           : p.source === "debt" ? <span data-testid="by-debt">· debt payment</span>
+                            : p.source === "fallback" && toReview(t) ? <span className="text-warning" data-testid="to-review">· to review</span>
                             : modelMove ? <span data-testid="by-model">· transfer, by categorizer</span>
                               : guess ? <span data-testid="by-model">· by categorizer</span> : null
                       )}

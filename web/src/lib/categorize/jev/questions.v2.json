@@ -1,0 +1,1155 @@
+{
+ "model": "jev-1.13.0",
+ "state_shape": {
+  "transaction": {
+   "description": "scrubbed statement text",
+   "direction": "money in|money out (from the amount sign)",
+   "amount_band_cad": "under $10|$10 to $30|$30 to $100|$100 to $300|$300 to $1,000|over $1,000",
+   "round_amount": "optional",
+   "how_often_seen": "computed from history",
+   "day_of_month": "e.g. 15 (middle of month)"
+  }
+ },
+ "decode": "parent = argmax P(flat); joint = argmax P(flat=p)*P(sub_p=s); confidence = flat.confidence",
+ "routing": "auto-apply when flat.confidence >= 0.7, else review",
+ "questions": {
+  "flat": {
+   "type": "choice",
+   "instructions": {
+    "question": "Which budget category does the bank transaction in `transaction` belong to?",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Transfers": {
+     "includes": "Money moved between the household's own accounts or to and from people, not paid to a business: e-Transfers sent to or received from a person, moving money between chequing and savings, paying the credit-card bill from the bank account, and ATM cash withdrawals.",
+     "examples": [
+      "INTERAC e-Transfer sent",
+      "Interac e-Transfer received",
+      "Withdrawal to Savings",
+      "Internet Deposit from Savings Account",
+      "Credit Card Payment",
+      "Bill Payment - MASTERCARD",
+      "ABM Withdrawal"
+     ],
+     "excludes": "Loan or line-of-credit repayments (Debt Payments); buying investments or crypto (Savings & Investing); paying any business for goods or services"
+    },
+    "Debt Payments": {
+     "includes": "Repaying borrowed money: line-of-credit repayments, personal and instalment loans, car loans, student loans (NSLSC), buy-now-pay-later plans such as Affirm, and lines worded 'Online bill payment for <card or loan>'.",
+     "examples": [
+      "Line of Credit Repayment",
+      "Withdrawal to NSLSC",
+      "Affirm Canada",
+      "easyfinancial",
+      "Online bill payment for MASTERCARD"
+     ],
+     "excludes": "Lines worded 'Bill Payment - <card>' or 'Credit Card Payment' (Transfers > Credit-Card Payment); mortgage or rent (Housing); moving money to your own savings (Transfers)"
+    },
+    "Income": {
+     "includes": "Money coming in that the household earned or got back: salary and payroll deposits, freelance or contract payments, interest earned, dividends, cashback rewards, merchant refunds, and proceeds from selling crypto.",
+     "examples": [
+      "PAYROLL DEPOSIT",
+      "Direct deposit from employer",
+      "Interest Earned",
+      "Cashback received",
+      "Refund",
+      "EFT Deposit from Newton Crypto"
+     ],
+     "excludes": "Money moved in from the household's own savings or other accounts (Transfers)"
+    },
+    "Savings & Investing": {
+     "includes": "Putting money into investments: buying crypto, contributing to a brokerage, TFSA or RRSP account, and investment gains or interest kept inside an investment account.",
+     "examples": [
+      "Purchase - COINBASE.COM",
+      "Transfer to Newton Crypto",
+      "Questrade deposit",
+      "EFT Deposit from investment account"
+     ],
+     "excludes": "Plain moves to a savings account (Transfers > To Savings); cashback (Income)"
+    },
+    "Dining & Take-out": {
+     "includes": "Food and drink prepared by someone else: coffee shops, fast-food chains, sit-down restaurants, food-delivery apps, bars, breweries and liquor stores.",
+     "examples": [
+      "Tim Hortons",
+      "Starbucks",
+      "McDonald's",
+      "Wendy's",
+      "A&W",
+      "Popeyes",
+      "Subway (sandwiches)",
+      "Uber Eats",
+      "DoorDash",
+      "SkipTheDishes",
+      "Swiss Chalet",
+      "LCBO",
+      "The Beer Store"
+     ],
+     "excludes": "Supermarkets and grocery stores (Groceries); Uber rides (Transportation)"
+    },
+    "Groceries": {
+     "includes": "Food and household staples bought to use at home, at supermarkets, warehouse clubs and grocery chains.",
+     "examples": [
+      "Loblaws",
+      "Real Canadian Superstore (RCSS)",
+      "No Frills",
+      "Metro",
+      "Sobeys",
+      "FreshCo",
+      "Food Basics",
+      "Farm Boy",
+      "Costco",
+      "Walmart",
+      "T&T Supermarket"
+     ],
+     "excludes": "Restaurants and take-out (Dining & Take-out)"
+    },
+    "Entertainment & Recreation": {
+     "includes": "Fun, media and leisure: streaming services, video games, movies, golf and live events, hobbies and crafts, and app or software subscriptions.",
+     "examples": [
+      "Netflix",
+      "Spotify",
+      "Disney Plus",
+      "Crave",
+      "DAZN",
+      "Steam",
+      "PlayStation",
+      "Xbox",
+      "Discord",
+      "Cineplex",
+      "Ticketmaster",
+      "a golf course",
+      "Michaels",
+      "Proton",
+      "Google Domains"
+     ],
+     "excludes": "Gyms and fitness (Personal Care); flights and hotels (Travel & Vacation); mobile phone and internet bills (Utilities)"
+    },
+    "Shopping": {
+     "includes": "Buying goods: online retail, clothing and shoes, electronics, toys, gifts and plants, and general or convenience stores including vape shops.",
+     "examples": [
+      "Amazon.ca",
+      "Winners",
+      "Lululemon",
+      "Uniqlo",
+      "Foot Locker",
+      "Best Buy",
+      "Canada Computers",
+      "Apple.com",
+      "Toys R Us",
+      "Dollarama",
+      "a vape shop"
+     ],
+     "excludes": "Groceries; pharmacy (Healthcare); furniture and hardware for the home (Housing)"
+    },
+    "Transportation": {
+     "includes": "Getting around: gas stations, public transit and PRESTO, rideshare and taxis, parking and toll highways, car and truck rental, and car repairs.",
+     "examples": [
+      "Petro-Canada",
+      "Esso",
+      "Shell",
+      "Circle K",
+      "PRESTO",
+      "TTC",
+      "Uber trip",
+      "Impark",
+      "Green P",
+      "407 ETR",
+      "U-Haul",
+      "Mr. Lube",
+      "Canadian Tire auto service"
+     ],
+     "excludes": "Flights and hotels (Travel & Vacation); auto insurance (Insurance); Uber Eats (Dining & Take-out)"
+    },
+    "Utilities": {
+     "includes": "Monthly household services: mobile phone and top-ups, home internet, natural gas, heating and water-heater rentals, hydro and water.",
+     "examples": [
+      "Rogers",
+      "Bell",
+      "Telus",
+      "Koodo",
+      "Fido",
+      "Freedom Mobile",
+      "Virgin Plus",
+      "Enbridge Gas",
+      "Reliance Home Comfort",
+      "Enercare",
+      "Toronto Hydro"
+     ],
+     "excludes": "Streaming and app subscriptions (Entertainment & Recreation)"
+    },
+    "Personal Care": {
+     "includes": "Looking after yourself: gym memberships, fitness programs and classes, hair and barber, cosmetics and skincare, spa and massage.",
+     "examples": [
+      "GoodLife Fitness",
+      "Fit4Less",
+      "LA Fitness",
+      "Planet Fitness",
+      "Noom",
+      "a barber shop",
+      "Sephora",
+      "a spa"
+     ],
+     "excludes": "Prescriptions, pharmacies and doctors (Healthcare)"
+    },
+    "Miscellaneous Fees": {
+     "includes": "Bank fees and charges, overdraft fees and interest, payment-service fees, charitable donations, lottery tickets, postage and office supplies.",
+     "examples": [
+      "Overdraft Fee",
+      "Overdraft Interest Charged",
+      "Monthly Account Fee",
+      "SickKids Foundation",
+      "GoFundMe",
+      "OLG",
+      "Canada Post",
+      "Staples"
+     ],
+     "excludes": "Interest paid to you (Income)"
+    },
+    "Insurance": {
+     "includes": "Insurance premiums: auto, home or tenant, and life.",
+     "examples": [
+      "Sonnet Insurance",
+      "Security National",
+      "Intact",
+      "TD Insurance",
+      "Belairdirect",
+      "Desjardins Insurance",
+      "Manulife"
+     ],
+     "excludes": "Medical bills (Healthcare)"
+    },
+    "Education & Self-Improvement": {
+     "includes": "Learning: online courses and certificates, tuition, books and e-books, learning apps.",
+     "examples": [
+      "Udacity",
+      "Udemy",
+      "Coursera",
+      "Indigo",
+      "Chapters",
+      "Kindle",
+      "Duolingo",
+      "daily.dev"
+     ],
+     "excludes": "School supplies or uniforms for children (Child & Dependent Care)"
+    },
+    "Healthcare": {
+     "includes": "Medical care: pharmacies, prescriptions and online pharmacies, doctor, lab and dentist visits, medical devices.",
+     "examples": [
+      "Shoppers Drug Mart",
+      "Rexall",
+      "PocketPills",
+      "Felix Health",
+      "LifeLabs",
+      "Dynacare",
+      "a dental clinic",
+      "a CPAP store"
+     ],
+     "excludes": "Gyms and beauty (Personal Care)"
+    },
+    "Housing": {
+     "includes": "The home itself: rent or mortgage, condo fees, home repairs and maintenance, and furniture.",
+     "examples": [
+      "TenantPay rent",
+      "Mortgage payment",
+      "condo corporation fees",
+      "IKEA",
+      "Home Depot",
+      "an electrician"
+     ],
+     "excludes": "Utilities billed separately (Utilities)"
+    },
+    "Travel & Vacation": {
+     "includes": "Trips away from home: flights, hotels, Airbnb and other lodging.",
+     "examples": [
+      "Air Canada",
+      "WestJet",
+      "Porter",
+      "Caribbean Airlines",
+      "Airbnb",
+      "Expedia",
+      "Marriott"
+     ],
+     "excludes": "Local transit, taxis and parking (Transportation)"
+    },
+    "Shipping": {
+     "includes": "Paying a courier or freight company to deliver a package.",
+     "examples": [
+      "Purolator",
+      "FedEx",
+      "UPS",
+      "DHL",
+      "a parcel-forwarding company"
+     ],
+     "excludes": "Online shopping orders (Shopping)"
+    },
+    "Child & Dependent Care": {
+     "includes": "Costs for children or dependants: daycare, school supplies and school uniforms.",
+     "examples": [
+      "a daycare",
+      "a school-uniform store",
+      "school supplies"
+     ],
+     "excludes": "Adult courses and books (Education & Self-Improvement)"
+    }
+   }
+  },
+  "sub__transfers": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Transfers', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Money moved between the household's own accounts or to and from people, not paid to a business: e-Transfers sent to or received from a person, moving money between chequing and savings, paying the credit-card bill from the bank account, and ATM cash withdrawals.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "P2P Transfer": {
+     "includes": "An Interac e-Transfer or other transfer sent to, or received from, a person.",
+     "examples": [
+      "INTERAC e-Transfer sent",
+      "Interac e-Transfer Out",
+      "Interac e-Transfer received",
+      "Transfer from a person"
+     ]
+    },
+    "Credit-Card Payment": {
+     "includes": "Paying the household's own credit-card bill from the bank account, written as 'Bill Payment - <card>' or '<card> Payment'.",
+     "examples": [
+      "Credit Card Payment",
+      "Bill Payment - MASTERCARD",
+      "Bill Payment - AMERICAN EXPRESS",
+      "PAYMENT - THANK YOU"
+     ]
+    },
+    "To Savings": {
+     "includes": "Moving money out of chequing into the household's own savings account.",
+     "examples": [
+      "Withdrawal to Savings",
+      "Transfer to Savings Account"
+     ]
+    },
+    "To Checking": {
+     "includes": "Money arriving in chequing from the household's own savings, investment or other account.",
+     "examples": [
+      "Internet Deposit from Savings Account",
+      "Deposit from Savings",
+      "Funds Transfer - Questrade"
+     ]
+    },
+    "Cash Withdrawal": {
+     "includes": "Taking cash out at an ATM (ABM) or branch.",
+     "examples": [
+      "ABM Withdrawal",
+      "ATM Withdrawal",
+      "Cash withdrawal"
+     ]
+    }
+   }
+  },
+  "sub__debt_payments": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Debt Payments', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Repaying borrowed money: line-of-credit repayments, personal and instalment loans, car loans, student loans (NSLSC), buy-now-pay-later plans such as Affirm, and lines worded 'Online bill payment for <card or loan>'.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Credit-Card": {
+     "includes": "An online bill payment to a credit-card account (Mastercard, Visa, store card).",
+     "examples": [
+      "Online bill payment for MASTERCARD",
+      "Online bill payment for CARDS",
+      "Online bill payment for CREDIT CARD"
+     ]
+    },
+    "Credit-Card Payment": {
+     "includes": "A credit-card bill payment that is not an online bill payment.",
+     "examples": [
+      "Bill Payment - CREDIT CARD"
+     ]
+    },
+    "Personal Loan": {
+     "includes": "Repaying a personal or instalment loan to a lender.",
+     "examples": [
+      "easyfinancial",
+      "goPeer loan payment",
+      "Fairstone payment"
+     ]
+    },
+    "Line of Credit": {
+     "includes": "Repaying a line of credit or home-equity line of credit.",
+     "examples": [
+      "Line of Credit Repayment",
+      "LOC PAYMENT",
+      "HELOC payment"
+     ]
+    },
+    "Buy Now Pay Later": {
+     "includes": "An instalment on a buy-now-pay-later plan.",
+     "examples": [
+      "Affirm Canada",
+      "Klarna",
+      "PayBright"
+     ]
+    },
+    "Student Loan": {
+     "includes": "Repaying a government student loan.",
+     "examples": [
+      "Withdrawal to NSLSC",
+      "OSAP repayment"
+     ]
+    },
+    "Car Loan": {
+     "includes": "Repaying a car or vehicle loan or lease financing.",
+     "examples": [
+      "AUTO LOAN PAYMENT",
+      "Toyota Financial Services",
+      "Car loan payment"
+     ]
+    },
+    "Other Debt": {
+     "includes": "Repaying any other loan or debt that fits none of the above.",
+     "examples": [
+      "LOAN PAYMENT"
+     ]
+    }
+   }
+  },
+  "sub__income": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Income', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Money coming in that the household earned or got back: salary and payroll deposits, freelance or contract payments, interest earned, dividends, cashback rewards, merchant refunds, and proceeds from selling crypto.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Salary & Wages": {
+     "includes": "A payroll or direct deposit from an employer.",
+     "examples": [
+      "PAYROLL DEPOSIT",
+      "Direct deposit from employer",
+      "Pay"
+     ]
+    },
+    "Freelance": {
+     "includes": "Payment received for freelance or contract work.",
+     "examples": [
+      "EFT Deposit from client",
+      "Stripe payout"
+     ]
+    },
+    "Interest & Dividends": {
+     "includes": "Interest earned on a bank or savings account, or dividends paid.",
+     "examples": [
+      "Interest Earned",
+      "Interest Deposit",
+      "Dividend"
+     ]
+    },
+    "Refunds & Reimbursements": {
+     "includes": "A cashback reward, merchant refund, or reimbursement of money spent.",
+     "examples": [
+      "Cashback received",
+      "Refund",
+      "Reimbursement",
+      "Interac e-Transfer received (paying you back)"
+     ]
+    },
+    "Crypto": {
+     "includes": "Money deposited from selling cryptocurrency on an exchange such as Newton, Shakepay or Coinbase.",
+     "examples": [
+      "EFT Deposit from Newton Crypto",
+      "Deposit from Shakepay"
+     ]
+    }
+   }
+  },
+  "sub__savings___investing": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Savings & Investing', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Putting money into investments: buying crypto, contributing to a brokerage, TFSA or RRSP account, and investment gains or interest kept inside an investment account.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Crypto": {
+     "includes": "Buying or moving money into cryptocurrency on an exchange such as Coinbase, Newton, Shakepay or Bitbuy.",
+     "examples": [
+      "Purchase - COINBASE.COM",
+      "Transfer to Newton Crypto",
+      "Crypto buy BTC"
+     ]
+    },
+    "Brokerage": {
+     "includes": "Money moving into or out of a brokerage, TFSA or RRSP investment account.",
+     "examples": [
+      "Questrade deposit",
+      "TFSA contribution",
+      "EFT Deposit from investment account"
+     ]
+    },
+    "Interest & Dividends": {
+     "includes": "Interest or dividends earned inside an investment account.",
+     "examples": [
+      "Dividend reinvested",
+      "Stock lending interest"
+     ]
+    }
+   }
+  },
+  "sub__dining___take_out": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Dining & Take-out', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Food and drink prepared by someone else: coffee shops, fast-food chains, sit-down restaurants, food-delivery apps, bars, breweries and liquor stores.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Coffee Shops": {
+     "includes": "Coffee, tea, donut and café purchases.",
+     "examples": [
+      "Tim Hortons",
+      "Starbucks",
+      "Second Cup",
+      "Balzac's",
+      "any café or coffee bar"
+     ]
+    },
+    "Fast Food": {
+     "includes": "Quick-service chains, pizza and shawarma counters, and food-delivery app orders.",
+     "examples": [
+      "McDonald's",
+      "Wendy's",
+      "A&W",
+      "Popeyes",
+      "Subway (sandwiches)",
+      "Domino's",
+      "Pizza Pizza",
+      "Uber Eats",
+      "DoorDash",
+      "SkipTheDishes",
+      "a food vending machine"
+     ]
+    },
+    "Restaurants": {
+     "includes": "Sit-down restaurants, brunch spots and food halls.",
+     "examples": [
+      "Swiss Chalet",
+      "The Keg",
+      "Boston Pizza",
+      "a pancake house",
+      "a food hall"
+     ]
+    },
+    "Alcohol & Bars": {
+     "includes": "Bars, pubs, breweries, distilleries and liquor stores.",
+     "examples": [
+      "LCBO",
+      "The Beer Store",
+      "SAQ",
+      "Wine Rack",
+      "a sports bar",
+      "a brewery taproom"
+     ]
+    },
+    "Rideshare/Taxi (commute)": {
+     "includes": "A rideshare charge that is really a meal order.",
+     "examples": [
+      "Uber trip charged with a food order"
+     ]
+    }
+   }
+  },
+  "sub__groceries": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Groceries', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Food and household staples bought to use at home, at supermarkets, warehouse clubs and grocery chains.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Supermarket": {
+     "includes": "Supermarkets, grocery chains and warehouse clubs.",
+     "examples": [
+      "Loblaws",
+      "RCSS",
+      "No Frills",
+      "Metro",
+      "Sobeys",
+      "Farm Boy",
+      "Costco",
+      "Walmart",
+      "FreshCo",
+      "Food Basics"
+     ]
+    },
+    "Farmers Market": {
+     "includes": "Farmers markets, farm stands and small produce sellers.",
+     "examples": [
+      "St. Lawrence Market vendor",
+      "farm stand"
+     ]
+    }
+   }
+  },
+  "sub__entertainment___recreation": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Entertainment & Recreation', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Fun, media and leisure: streaming services, video games, movies, golf and live events, hobbies and crafts, and app or software subscriptions.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Streaming Subscriptions": {
+     "includes": "Video, sports and music streaming and AI chat subscriptions.",
+     "examples": [
+      "Netflix",
+      "Spotify",
+      "Disney Plus",
+      "Crave",
+      "DAZN",
+      "CBC Gem",
+      "YouTube Premium",
+      "ChatGPT Plus"
+     ]
+    },
+    "Subscriptions": {
+     "includes": "Other recurring app, email, web or software subscriptions.",
+     "examples": [
+      "Proton",
+      "Google Domains",
+      "Google One",
+      "iCloud",
+      "Microsoft 365",
+      "Wealthica"
+     ]
+    },
+    "Video Games": {
+     "includes": "Games, in-game purchases and gaming services.",
+     "examples": [
+      "Steam",
+      "PlayStation Store",
+      "Xbox",
+      "Nintendo",
+      "Xsolla",
+      "Discord Nitro"
+     ]
+    },
+    "Sporting Events": {
+     "includes": "Golf rounds, driving ranges, game and concert tickets.",
+     "examples": [
+      "a golf club or golf course",
+      "Ticketmaster",
+      "Toronto Blue Jays",
+      "a driving range"
+     ]
+    },
+    "Movies": {
+     "includes": "Movie theatres and film tickets.",
+     "examples": [
+      "Cineplex",
+      "Landmark Cinemas"
+     ]
+    },
+    "Hobbies & Crafts": {
+     "includes": "Hobby and craft supplies, galleries and hobby outings.",
+     "examples": [
+      "Michaels",
+      "an art gallery",
+      "a craft store"
+     ]
+    }
+   }
+  },
+  "sub__shopping": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Shopping', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Buying goods: online retail, clothing and shoes, electronics, toys, gifts and plants, and general or convenience stores including vape shops.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Online Retail": {
+     "includes": "Orders from online marketplaces and web stores.",
+     "examples": [
+      "Amazon.ca",
+      "AliExpress",
+      "Temu",
+      "eBay"
+     ]
+    },
+    "Clothing & Shoes": {
+     "includes": "Clothing, shoes and accessories.",
+     "examples": [
+      "Winners",
+      "Lululemon",
+      "Uniqlo",
+      "Foot Locker",
+      "Gymshark",
+      "H&M",
+      "Old Navy"
+     ]
+    },
+    "Electronics & Gadgets": {
+     "includes": "Electronics, computer parts and gadgets.",
+     "examples": [
+      "Best Buy",
+      "Canada Computers",
+      "Apple.com",
+      "Memory Express",
+      "Ubiquiti"
+     ]
+    },
+    "Toys & Treats": {
+     "includes": "Toys, candy and small treats.",
+     "examples": [
+      "Toys R Us",
+      "a candy shop"
+     ]
+    },
+    "Gifts & Flowers": {
+     "includes": "Gift shops, florists and plant shops.",
+     "examples": [
+      "a florist",
+      "a plant shop",
+      "a gift shop"
+     ]
+    },
+    "Other": {
+     "includes": "General, convenience and vape stores, vending machines and anything else bought in a shop.",
+     "examples": [
+      "Dollarama",
+      "a vape shop",
+      "a convenience store",
+      "a vending machine"
+     ]
+    }
+   }
+  },
+  "sub__transportation": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Transportation', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Getting around: gas stations, public transit and PRESTO, rideshare and taxis, parking and toll highways, car and truck rental, and car repairs.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Fuel": {
+     "includes": "Gas stations.",
+     "examples": [
+      "Petro-Canada",
+      "Esso",
+      "Shell",
+      "Circle K",
+      "Pioneer",
+      "Ultramar"
+     ]
+    },
+    "Public Transit": {
+     "includes": "Transit fares and PRESTO card loads.",
+     "examples": [
+      "PRESTO Fare",
+      "PRESTO Mobile",
+      "TTC",
+      "GO Transit",
+      "UP Express"
+     ]
+    },
+    "Rideshare/Taxi (commute)": {
+     "includes": "Uber or Lyft rides and taxis.",
+     "examples": [
+      "Uber trip",
+      "Lyft",
+      "Beck Taxi"
+     ]
+    },
+    "Parking & Tolls": {
+     "includes": "Parking lots, parking apps and toll highways.",
+     "examples": [
+      "Impark",
+      "Green P",
+      "Honk",
+      "Park'N Fly",
+      "407 ETR"
+     ]
+    },
+    "Car Rental": {
+     "includes": "Renting a car, truck or van.",
+     "examples": [
+      "U-Haul",
+      "Enterprise",
+      "Budget"
+     ]
+    },
+    "Repairs": {
+     "includes": "Car repairs and maintenance.",
+     "examples": [
+      "Mr. Lube",
+      "Midas",
+      "Canadian Tire auto service"
+     ]
+    }
+   }
+  },
+  "sub__utilities": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Utilities', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Monthly household services: mobile phone and top-ups, home internet, natural gas, heating and water-heater rentals, hydro and water.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Mobile Phone": {
+     "includes": "Mobile phone bills, pre-authorized carrier payments and prepaid top-ups.",
+     "examples": [
+      "Telus Mobility",
+      "Koodo Mobile",
+      "Rogers",
+      "Bell Mobility",
+      "Fido",
+      "Freedom Mobile",
+      "Flow top up"
+     ]
+    },
+    "Internet": {
+     "includes": "Home internet service.",
+     "examples": [
+      "Rogers Internet",
+      "Bell Internet",
+      "TekSavvy",
+      "Start.ca"
+     ]
+    },
+    "Gas/Heating": {
+     "includes": "Natural gas, heating, furnace and water-heater rental.",
+     "examples": [
+      "Enbridge Gas",
+      "Reliance Home Comfort",
+      "Enercare"
+     ]
+    }
+   }
+  },
+  "sub__personal_care": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Personal Care', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Looking after yourself: gym memberships, fitness programs and classes, hair and barber, cosmetics and skincare, spa and massage.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Gym Membership": {
+     "includes": "Gym and fitness-club memberships and fitness equipment.",
+     "examples": [
+      "GoodLife Fitness",
+      "Fit4Less",
+      "LA Fitness",
+      "Planet Fitness",
+      "Rogue Fitness"
+     ]
+    },
+    "Fitness Classes": {
+     "includes": "Fitness classes and fitness or diet programs.",
+     "examples": [
+      "Noom",
+      "a yoga studio",
+      "Orangetheory"
+     ]
+    },
+    "Hair & Barber": {
+     "includes": "Hair salons and barbers.",
+     "examples": [
+      "a barber shop",
+      "a hair salon",
+      "fades"
+     ]
+    },
+    "Cosmetics & Skincare": {
+     "includes": "Cosmetics, beauty and skincare.",
+     "examples": [
+      "Sephora",
+      "MAC Cosmetics"
+     ]
+    },
+    "Spa & Massage": {
+     "includes": "Spa and massage.",
+     "examples": [
+      "a spa",
+      "a massage clinic"
+     ]
+    }
+   }
+  },
+  "sub__miscellaneous_fees": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Miscellaneous Fees', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Bank fees and charges, overdraft fees and interest, payment-service fees, charitable donations, lottery tickets, postage and office supplies.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Bank & ATM Fees": {
+     "includes": "Bank account, overdraft, ATM and payment-service fees and overdraft interest.",
+     "examples": [
+      "Overdraft Fee",
+      "Overdraft Interest Charged",
+      "Monthly Account Fee",
+      "EZ-PAY FEE"
+     ]
+    },
+    "Donations": {
+     "includes": "Donations to a charity or foundation.",
+     "examples": [
+      "SickKids Foundation",
+      "Sunnybrook Foundation",
+      "Plan Canada",
+      "Canadian Red Cross"
+     ]
+    },
+    "Charitable Donations": {
+     "includes": "Crowdfunding donations.",
+     "examples": [
+      "GoFundMe"
+     ]
+    },
+    "Lottery": {
+     "includes": "Lottery tickets and draws.",
+     "examples": [
+      "OLG",
+      "a home lottery"
+     ]
+    },
+    "Postage": {
+     "includes": "Postage and mailing, including postage meters.",
+     "examples": [
+      "Canada Post",
+      "Pitney Bowes"
+     ]
+    },
+    "Office Supplies": {
+     "includes": "Office supplies and printing.",
+     "examples": [
+      "Staples",
+      "Staples print"
+     ]
+    }
+   }
+  },
+  "sub__insurance": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Insurance', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Insurance premiums: auto, home or tenant, and life.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Auto Insurance": {
+     "includes": "Car insurance premiums.",
+     "examples": [
+      "Sonnet Insurance",
+      "Security National",
+      "Intact",
+      "Belairdirect"
+     ]
+    },
+    "Life": {
+     "includes": "Life insurance premiums.",
+     "examples": [
+      "Manulife",
+      "Sun Life",
+      "Canada Life"
+     ]
+    }
+   }
+  },
+  "sub__education___self_improvement": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Education & Self-Improvement', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Learning: online courses and certificates, tuition, books and e-books, learning apps.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Courses & Certificates": {
+     "includes": "Online courses, tuition and certificates.",
+     "examples": [
+      "Udacity",
+      "Udemy",
+      "Coursera"
+     ]
+    },
+    "Books & e-Books": {
+     "includes": "Books and e-books.",
+     "examples": [
+      "Indigo",
+      "Chapters",
+      "Kindle"
+     ]
+    },
+    "Online Learning Apps": {
+     "includes": "Learning apps and developer learning tools.",
+     "examples": [
+      "Duolingo",
+      "daily.dev"
+     ]
+    }
+   }
+  },
+  "sub__healthcare": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Healthcare', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Medical care: pharmacies, prescriptions and online pharmacies, doctor, lab and dentist visits, medical devices.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Pharmacy": {
+     "includes": "Purchases at a drugstore.",
+     "examples": [
+      "Shoppers Drug Mart",
+      "Rexall",
+      "Pharmasave"
+     ]
+    },
+    "Prescriptions": {
+     "includes": "Prescription medication, including online prescription services.",
+     "examples": [
+      "Felix Health",
+      "PocketPills",
+      "a local pharmacy dispensary"
+     ]
+    },
+    "Doctor Visits": {
+     "includes": "Doctor, lab, clinic and dentist visits.",
+     "examples": [
+      "LifeLabs",
+      "Dynacare",
+      "a walk-in clinic",
+      "a dental office"
+     ]
+    },
+    "Medical Devices": {
+     "includes": "Medical devices and equipment.",
+     "examples": [
+      "a CPAP store",
+      "a hearing-aid clinic"
+     ]
+    }
+   }
+  },
+  "sub__housing": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Housing', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "The home itself: rent or mortgage, condo fees, home repairs and maintenance, and furniture.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Rent / Mortgage": {
+     "includes": "Monthly rent or mortgage payment.",
+     "examples": [
+      "TenantPay",
+      "Mortgage payment",
+      "rent to a property manager"
+     ]
+    },
+    "HOA / Condo Fees": {
+     "includes": "Condo corporation or HOA fees.",
+     "examples": [
+      "Withdrawal to condo corporation",
+      "condo fees"
+     ]
+    },
+    "Repairs & Maintenance": {
+     "includes": "Home repairs, trades and hardware stores.",
+     "examples": [
+      "Home Depot",
+      "RONA",
+      "an electrician",
+      "a plumber"
+     ]
+    },
+    "Essential Furniture": {
+     "includes": "Furniture for the home.",
+     "examples": [
+      "IKEA",
+      "Structube",
+      "The Brick"
+     ]
+    }
+   }
+  },
+  "sub__travel___vacation": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Travel & Vacation', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Trips away from home: flights, hotels, Airbnb and other lodging.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Flights": {
+     "includes": "Airline tickets.",
+     "examples": [
+      "Air Canada",
+      "WestJet",
+      "Porter",
+      "Caribbean Airlines",
+      "Air Transat"
+     ]
+    },
+    "Accommodation": {
+     "includes": "Hotels, Airbnb and other lodging.",
+     "examples": [
+      "Airbnb",
+      "Marriott",
+      "Expedia hotel",
+      "Booking.com"
+     ]
+    }
+   }
+  },
+  "sub__shipping": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Shipping', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Paying a courier or freight company to deliver a package.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "Other": {
+     "includes": "Courier, freight and parcel-forwarding charges.",
+     "examples": [
+      "Purolator",
+      "FedEx",
+      "UPS",
+      "DHL"
+     ]
+    }
+   }
+  },
+  "sub__child___dependent_care": {
+   "type": "choice",
+   "instructions": {
+    "question": "Within the budget category 'Child & Dependent Care', which subcategory does the bank transaction in `transaction` belong to?",
+    "category": "Costs for children or dependants: daycare, school supplies and school uniforms.",
+    "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
+   },
+   "criteria": {
+    "School Supplies": {
+     "includes": "School supplies and school uniforms for children.",
+     "examples": [
+      "a school-uniform store",
+      "school supplies"
+     ]
+    }
+   }
+  }
+ },
+ "fulla_debt_subcategories": {
+  "Personal Loan": "personal_loan",
+  "Line of Credit": "line_of_credit",
+  "Buy Now Pay Later": "bnpl",
+  "Student Loan": "student_loan",
+  "Car Loan": "car_loan",
+  "Other Debt": "other_debt",
+  "Credit-Card": "transfer (card bill)",
+  "Credit-Card Payment": "transfer (card bill)"
+ }
+}

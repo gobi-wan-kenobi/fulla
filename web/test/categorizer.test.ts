@@ -198,6 +198,10 @@ describe("POST /api/categorize (mocked network)", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     process.env.NEXT_PUBLIC_SUPABASE_URL = "http://supabase.test";
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon";
+    // Never the real keys of whoever runs the tests.
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.TYPESAFE_API_KEY;
+    delete process.env.FULLA_CATEGORIZER;
   });
   afterEach(() => {
     process.env = { ...saved };
@@ -210,31 +214,44 @@ describe("POST /api/categorize (mocked network)", () => {
       body: JSON.stringify({ items: [item] }),
     });
 
-  it("is off without OPENAI_API_KEY, and says so", async () => {
+  it("is off without a key, and says so", async () => {
     delete process.env.OPENAI_API_KEY;
+    delete process.env.TYPESAFE_API_KEY;
+    process.env.FULLA_CATEGORIZER = "openai";
     const { GET, POST } = await import("@/app/api/categorize/route");
-    expect(await (await GET()).json()).toEqual({ enabled: false });
+    expect(await (await GET()).json()).toEqual({ enabled: false, provider: "off" });
+    delete process.env.FULLA_CATEGORIZER;
+    expect(await (await GET()).json()).toEqual({ enabled: false, provider: "off" });
     expect(await (await POST(post("Bearer x"))).json()).toEqual({ results: {}, stopped: "off" });
   });
 
   it("refuses a request without a live Supabase session", async () => {
-    process.env.OPENAI_API_KEY = KEY;
+    process.env.TYPESAFE_API_KEY = KEY;
     const f = vi.fn(async () => new Response("{}", { status: 401 }));
     vi.stubGlobal("fetch", f);
     const { POST } = await import("@/app/api/categorize/route");
     expect((await POST(post())).status).toBe(401);
     expect((await POST(post("Bearer expired"))).status).toBe(401);
-    expect((f.mock.calls as unknown[][]).every((c) => !String(c[0]).includes("openai"))).toBe(true);
+    expect((f.mock.calls as unknown[][]).every((c) => !String(c[0]).includes("openai") && !String(c[0]).includes("typesafe"))).toBe(true);
   });
 
-  it("answers a signed-in person", async () => {
+  it("answers a signed-in person with the OpenAI fallback, when it is chosen", async () => {
     process.env.OPENAI_API_KEY = KEY;
+    process.env.FULLA_CATEGORIZER = "openai";
     const f = vi.fn(async (url: string) => (String(url).includes("/auth/v1/user") ? new Response("{}", { status: 200 }) : reply(ANSWER)));
     vi.stubGlobal("fetch", f);
     const { POST, GET } = await import("@/app/api/categorize/route");
-    expect(await (await GET()).json()).toEqual({ enabled: true });
+    expect(await (await GET()).json()).toEqual({ enabled: true, provider: "openai" });
     const body = await (await POST(post("Bearer live"))).json();
     expect(body.results.t1.parent).toBe("Dining & Take-out");
+    delete process.env.FULLA_CATEGORIZER;
+  });
+
+  it("does not use OpenAI unless chosen, even with its key", async () => {
+    process.env.OPENAI_API_KEY = KEY;
+    delete process.env.TYPESAFE_API_KEY;
+    const { GET } = await import("@/app/api/categorize/route");
+    expect(await (await GET()).json()).toEqual({ enabled: false, provider: "off" });
   });
 });
 

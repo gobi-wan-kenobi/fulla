@@ -6,10 +6,11 @@ import { byDay, categoriesFor, monthOf, monthSpendingSplit, monthTotals, recateg
 import { countsInTotals, type Config, type Transaction } from "@/lib/model";
 import { formatMoney } from "@/lib/money";
 import type { LocalRow } from "@/lib/sync";
+import { isUnmatchedTransfer, needsReview, UNMATCHED_TAG, withoutTag } from "@/lib/review";
 import { normalizeName } from "@/lib/text";
 import { Avatar, Chip, EmptyState, ScreenHeader } from "./Pieces";
 
-type Filter = "all" | "spending" | "income" | "transfers";
+type Filter = "all" | "spending" | "income" | "transfers" | "review";
 
 function dayLabel(date: string, locale: string): string {
   const [y, m, d] = date.split("-").map(Number);
@@ -52,11 +53,20 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh,
       if (filter === "spending" && k !== "expense" && k !== "refund") return false;
       if (filter === "income" && k !== "income") return false;
       if (filter === "transfers" && k !== "transfer" && k !== "settlement") return false;
+      if (filter === "review" && !needsReview(r.tx) && !isUnmatchedTransfer(r.tx)) return false;
       if (!q) return true;
       return normalizeName(`${r.tx.note} ${category(r.tx.category_id)?.name ?? ""}`).includes(q);
     });
   }, [rows, filter, query]); // eslint-disable-line react-hooks/exhaustive-deps
-  const days = useMemo(() => byDay(filtered, month), [filtered, month]);
+  // Review is every month at once: what is waiting should not hide in an earlier month.
+  const days = useMemo(
+    () => (filter === "review" ? [...new Set(filtered.map((r) => monthOf(r.tx.date)))].sort().reverse().flatMap((m) => byDay(filtered, m)) : byDay(filtered, month)),
+    [filtered, month, filter],
+  );
+  const waiting = useMemo(() => ({
+    review: rows.filter((r) => needsReview(r.tx)).length,
+    unmatched: rows.filter((r) => isUnmatchedTransfer(r.tx)).length,
+  }), [rows]);
   const totals = useMemo(() => monthTotals(rows, month), [rows, month]);
   const split = useMemo(() => monthSpendingSplit(rows, month), [rows, month]);
   const chosenRows = rows.filter((r) => selected.has(r.tx.id));
@@ -117,7 +127,17 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh,
         {(["all", "spending", "income", "transfers"] as Filter[]).map((f) => (
           <Chip key={f} label={f[0].toUpperCase() + f.slice(1)} selected={filter === f} onClick={() => setFilter(f)} />
         ))}
+        {(waiting.review > 0 || waiting.unmatched > 0 || filter === "review") && (
+          <Chip label={`Review (${waiting.review + waiting.unmatched})`} selected={filter === "review"} onClick={() => setFilter("review")} />
+        )}
       </div>
+      {filter === "review" && (
+        <p className="t-secondary text-ink-muted px-5 pb-2" data-testid="review-help">
+          {waiting.review} the categorizer was unsure of: pick a category and they leave this list.
+          {" "}{waiting.unmatched} unmatched {waiting.unmatched === 1 ? "transfer" : "transfers"}: seen on one statement only. They match when you
+          import the other account&apos;s statement; if there is none, mark them fine.
+        </p>
+      )}
       <div className="flex items-center justify-between px-3">
         <button type="button" aria-label="Previous month" className="yields p-2" onClick={() => setMonth(shiftMonth(month, -1))}><ChevronLeft size={22} /></button>
         <div className="text-center">
@@ -170,6 +190,8 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh,
                     <div className="t-secondary text-ink-muted truncate">
                       {context}
                       {t.recurrence === "fixed" && countsInTotals(t.kind) && " · fixed"}
+                      {needsReview(t) && <span className="text-warning" data-testid="row-review"> · to review</span>}
+                      {isUnmatchedTransfer(t) && filter !== "all" && <span className="text-warning" data-testid="row-unmatched"> · unmatched</span>}
                       {r.state === "pending" && " · waiting to sync"}
                       {r.state === "rejected" && <span className="text-danger"> · refused</span>}
                     </div>
@@ -179,6 +201,17 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh,
                   </div>
                 </button>
               );
+            }).flatMap((el, i) => {
+              const r = d.rows[i];
+              if (filter !== "review" || !isUnmatchedTransfer(r.tx) || !onBulk) return [el];
+              return [el, (
+                <div key={`${r.tx.id}-fine`} className="px-5 pb-2 -mt-1 border-b border-line flex justify-end">
+                  <button type="button" data-testid="transfer-fine" className="t-secondary underline text-ink-muted"
+                    onClick={() => void onBulk([{ tx: withoutTag(r.tx, UNMATCHED_TAG), existing: r }])}>
+                    It&apos;s fine, no other statement
+                  </button>
+                </div>
+              )];
             })}
           </section>
         ))

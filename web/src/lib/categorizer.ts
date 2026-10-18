@@ -29,6 +29,10 @@ export interface ModelItem {
   /** Minor units per major unit (2 for CAD). */
   minor_units?: number;
   institution?: string | null;
+  /** Which way the money went, from the statement's sign. */
+  direction?: "out" | "in";
+  /** How often the household has seen this payee (categorize/facts.ts). */
+  how_often_seen?: string;
 }
 
 export interface ModelAnswer {

@@ -1,12 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
- * The server's half of the categorizer: asks the model about a few lines and
- * returns its answers. Off unless OPENAI_API_KEY is set (server-side only,
- * never NEXT_PUBLIC_). Any failure (no key, no credit, rate limit, timeout, an
- * answer it cannot read) leaves those lines unanswered, and the import falls
- * through to Other as if the model were off.
+ * The server's half of the categorizer: asks about a few lines and returns
+ * the answers. Which categorizer (FULLA_CATEGORIZER, server-side only):
+ *
+ *  - "jev" (the default): Jev, when TYPESAFE_API_KEY is set (server/jev.ts).
+ *    Unsure answers come back marked for review.
+ *  - "openai": the fine-tuned OpenAI model, kept as a fallback and off unless
+ *    chosen, with OPENAI_API_KEY set.
+ *  - "off": none.
+ *
+ * The local classifier (server/local.ts) is in the code but off. Any failure
+ * (no key, no credit, rate limit, timeout, an answer it cannot read) leaves
+ * those lines unanswered, and the import falls through to Other.
  */
 import { DEFAULT_CATEGORIZER_MODEL, type ModelAnswer, type ModelItem, SYSTEM_PROMPT, parseAnswer, userPrompt } from "../categorizer";
+import { askJev, jevEnabled } from "./jev";
 
 export const MAX_ITEMS = 40;
 const CONCURRENCY = 4;
@@ -19,6 +27,26 @@ export interface CategorizerEnv {
   OPENAI_API_KEY?: string;
   FULLA_CATEGORIZER_MODEL?: string;
   OPENAI_BASE_URL?: string;
+  TYPESAFE_API_KEY?: string;
+  FULLA_CATEGORIZER?: string;
+}
+
+export type Provider = "jev" | "openai" | "off";
+
+/** The categorizer this server uses: Jev unless another is chosen, and only with its key. */
+export function provider(env: CategorizerEnv): Provider {
+  const chosen = (env.FULLA_CATEGORIZER?.trim().toLowerCase() || "jev") as Provider;
+  if (chosen === "jev") return jevEnabled(env) ? "jev" : "off";
+  if (chosen === "openai") return openaiEnabled(env) ? "openai" : "off";
+  return "off";
+}
+
+/** Asks whichever categorizer is on. Never throws. */
+export async function categorize(items: ModelItem[], env: CategorizerEnv, doFetch: typeof fetch = fetch): Promise<Answered> {
+  const p = provider(env);
+  if (p === "jev") return askJev(items.slice(0, MAX_ITEMS), env, doFetch);
+  if (p === "openai") return askModel(items, env, doFetch);
+  return { results: {}, stopped: "off" };
 }
 
 /**
@@ -26,9 +54,14 @@ export interface CategorizerEnv {
  * characters. A placeholder ("[REDACTED]", "changeme", a pasted sentence)
  * leaves it off, so the app says so instead of failing every call.
  */
-export function categorizerEnabled(env: CategorizerEnv): boolean {
+export function openaiEnabled(env: CategorizerEnv): boolean {
   const k = env.OPENAI_API_KEY?.trim() ?? "";
   return /^[A-Za-z0-9_\-.:]{20,}$/.test(k);
+}
+
+/** True when some categorizer is on. */
+export function categorizerEnabled(env: CategorizerEnv): boolean {
+  return provider(env) !== "off";
 }
 
 export interface Answered {
@@ -45,7 +78,7 @@ export async function askModel(
 ): Promise<Answered> {
   const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS;
   const retries = opts.retries ?? RETRIES;
-  if (!categorizerEnabled(env)) return { results: {}, stopped: "off" };
+  if (!openaiEnabled(env)) return { results: {}, stopped: "off" };
   const model = env.FULLA_CATEGORIZER_MODEL?.trim() || DEFAULT_CATEGORIZER_MODEL;
   const base = (env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1").replace(/\/+$/, "");
   const results: Record<string, ModelAnswer> = {};
@@ -122,6 +155,8 @@ export function readItems(body: unknown): ModelItem[] | null {
       amount_minor: Math.trunc(o.amount_minor),
       minor_units: typeof o.minor_units === "number" ? Math.min(3, Math.max(0, Math.trunc(o.minor_units))) : 2,
       institution: typeof o.institution === "string" ? o.institution.slice(0, 40) : null,
+      direction: o.direction === "in" || o.direction === "out" ? o.direction : undefined,
+      how_often_seen: typeof o.how_often_seen === "string" ? o.how_often_seen.slice(0, 60) : undefined,
     });
   }
   return out;
