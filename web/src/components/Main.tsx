@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 "use client";
-import { FileUp, History, PieChart, Plus, Settings } from "lucide-react";
+import { FileUp, History, PieChart, Plus, Settings, TrendingUp } from "lucide-react";
 import { useState } from "react";
 import type { Membership } from "@/lib/api";
 import { useHousehold } from "@/lib/store";
@@ -10,11 +10,13 @@ import { HistoryScreen } from "./HistoryScreen";
 import { ImportScreen } from "./ImportScreen";
 import { OverviewScreen } from "./OverviewScreen";
 import { SettingsScreen } from "./SettingsScreen";
+import { TrendsScreen } from "./TrendsScreen";
 
-type Tab = "overview" | "add" | "history" | "import" | "settings";
+type Tab = "overview" | "trends" | "add" | "history" | "import" | "settings";
 
 const TABS: { key: Tab; label: string; icon: typeof Plus }[] = [
   { key: "overview", label: "Overview", icon: PieChart },
+  { key: "trends", label: "Trends", icon: TrendingUp },
   { key: "add", label: "Add", icon: Plus },
   { key: "history", label: "History", icon: History },
   { key: "import", label: "Import", icon: FileUp },
@@ -32,6 +34,8 @@ export function Main(props: {
   const [tab, setTab] = useState<Tab>("overview");
   const [editing, setEditing] = useState<LocalRow | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
+  // Trends opened from a category in the Overview: that category (a new key, so the screen starts from it).
+  const [trendFrom, setTrendFrom] = useState<{ category: string | null; key: number }>({ category: null, key: 0 });
   const config = household.config;
 
   return (
@@ -56,7 +60,9 @@ export function Main(props: {
             onClose={() => setEditing(null)}
           />
         ) : tab === "overview" ? (
-          <OverviewScreen config={config} rows={household.rows} />
+          <OverviewScreen config={config} rows={household.rows} onTrend={(category) => { setTrendFrom((t) => ({ category, key: t.key + 1 })); setTab("trends"); }} />
+        ) : tab === "trends" ? (
+          <TrendsScreen key={trendFrom.key} config={config} rows={household.rows} initialCategory={trendFrom.category} onImport={() => setTab("import")} />
         ) : tab === "add" ? (
           <EntryScreen config={config} onSave={(tx) => household.saveTransaction(tx)} onConfig={household.setConfig} />
         ) : tab === "history" ? (
@@ -69,17 +75,17 @@ export function Main(props: {
       </div>
       {!editing && (
         <nav className="fixed bottom-0 inset-x-0 bg-paper-high border-t border-line safe-bottom">
-          <div className="max-w-md mx-auto grid grid-cols-5">
+          <div className="max-w-md mx-auto grid grid-cols-6">
             {TABS.map(({ key, label, icon: I }) => (
               <button
                 key={key}
                 type="button"
                 data-testid={`tab-${key}`}
                 onClick={() => { setTab(key); setAccountId(null); }}
-                className="yields flex flex-col items-center gap-1 py-2"
+                className="yields flex flex-col items-center gap-1 py-2 min-w-0"
                 aria-current={tab === key ? "page" : undefined}
               >
-                <span className={`px-5 py-1 rounded-full ${tab === key ? "bg-highlight text-on-highlight" : "text-ink-muted"}`}>
+                <span className={`px-3 py-1 rounded-full ${tab === key ? "bg-highlight text-on-highlight" : "text-ink-muted"}`}>
                   <I size={22} />
                 </span>
                 <span className={`t-label ${tab === key ? "text-ink" : "text-ink-muted"}`}>{label}</span>

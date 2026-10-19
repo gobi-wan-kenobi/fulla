@@ -23,8 +23,10 @@ function monthLabel(month: string, locale: string): string {
  * what went out and what is left, then where the spending went, one plain row
  * per category. Figures come from lib/overview.ts.
  */
-export function OverviewScreen({ config, rows, snapshots: given, initialMonth, initialOpen }: {
+export function OverviewScreen({ config, rows, snapshots: given, initialMonth, initialOpen, onTrend }: {
   config: Config; rows: LocalRow[]; snapshots?: BalanceSnapshot[]; initialMonth?: string; initialOpen?: string | null;
+  /** A category tapped in "Where it went": its trend. */
+  onTrend?: (categoryId: string) => void;
 }) {
   const locale = config.household.locale || "en-CA";
   const currency = config.household.currency;
@@ -118,12 +120,15 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
               row.budget ? `of ${money(row.budget.limitMinor)}` : row.usualMinor > 0 ? `usually ${money(row.usualMinor)}` : null,
             ].filter(Boolean).join(" · ");
             return (
-              <div key={key} data-testid="where-row">
+              <div key={key}>
+              <div data-testid="where-row" className="flex items-stretch border-b border-line">
                 <button
                   type="button"
-                  className="w-full flex items-center gap-4 px-5 py-3 border-b border-line text-left yields"
-                  onClick={() => row.subs.length > 0 && setOpen(expanded ? null : key)}
-                  aria-expanded={row.subs.length > 0 ? expanded : undefined}
+                  data-testid="where-open"
+                  className="flex-1 min-w-0 flex items-center gap-4 pl-5 py-3 text-left yields"
+                  onClick={() => (onTrend && row.categoryId ? onTrend(row.categoryId) : row.subs.length > 0 && setOpen(expanded ? null : key))}
+                  aria-label={onTrend && row.categoryId ? `${c?.name ?? "Uncategorized"}: ${money(row.amountMinor)}, open its trend` : undefined}
+                  aria-expanded={!onTrend && row.subs.length > 0 ? expanded : undefined}
                 >
                   <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-paper-high">
                     <Icon name={c?.icon ?? "label"} color={categoryColor(c?.color_index ?? 0)} />
@@ -140,15 +145,20 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
                     )}
                   </div>
                   <div className="t-amount">{money(row.amountMinor)}</div>
-                  <span className="w-[18px] shrink-0 text-ink-muted" aria-hidden>
-                    {row.subs.length > 0 && (expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />)}
-                  </span>
                 </button>
-                {expanded && row.subs.map((s) => (
-                  <div key={s.categoryId} className="flex items-center gap-4 pl-[76px] pr-[54px] py-2 border-b border-line" data-testid="where-sub">
+                <button type="button" data-testid="where-expand" disabled={row.subs.length === 0}
+                  className="w-[54px] shrink-0 flex items-center justify-center text-ink-muted yields disabled:pointer-events-none"
+                  onClick={() => setOpen(expanded ? null : key)} aria-expanded={row.subs.length > 0 ? expanded : undefined}
+                  aria-label={row.subs.length > 0 ? `${expanded ? "Hide" : "Show"} subcategories` : undefined} aria-hidden={row.subs.length === 0}>
+                  {row.subs.length > 0 && (expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />)}
+                </button>
+              </div>
+              {expanded && row.subs.map((s) => (
+                  <button type="button" key={s.categoryId} onClick={() => onTrend?.(s.categoryId)} disabled={!onTrend}
+                    className="w-full flex items-center gap-4 pl-[76px] pr-[54px] py-2 border-b border-line text-left yields" data-testid="where-sub">
                     <div className="flex-1 t-secondary truncate">{s.categoryId === row.categoryId ? "General" : category(s.categoryId)?.name ?? ""}</div>
                     <div className="t-amount text-ink-muted">{money(s.amountMinor)}</div>
-                  </div>
+                  </button>
                 ))}
               </div>
             );
