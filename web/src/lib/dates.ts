@@ -54,3 +54,13 @@ export function median(values: number[]): number {
   const mid = Math.floor(s.length / 2);
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
+
+/** Which way a date that falls on a weekend moves: to the Friday before, the Monday after, or not at all. */
+export type WeekendShift = "back" | "forward" | null;
+
+/** date, moved off a weekend as shift says. */
+export function businessDay(date: string, shift: WeekendShift): string {
+  const w = weekday(date);
+  if (!shift || w < 6) return date;
+  return shift === "back" ? addDays(date, -(w - 5)) : addDays(date, 8 - w);
+}

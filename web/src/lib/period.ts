@@ -12,9 +12,12 @@
  *
  * A payday after the records' last day but not after today is expected, not
  * imported yet (most likely paid, the statement not in): it is not the next
- * payday, which is always the first after today.
+ * payday, which is always the first after today. A payday on a weekend is
+ * paid the Friday before unless the history shows otherwise (shift, from
+ * lib/recurring.ts shiftOf); every date here is already moved.
  */
 import { monthOf, shiftMonth } from "./ledger";
+import { type WeekendShift, businessDay } from "./dates";
 import { type Cadence, type Evidence, type RecurringView, stepCadence } from "./recurring";
 
 export type Period = string;
@@ -50,6 +53,8 @@ export interface Payday {
   nextDate: string;
   /** Paydays after the records' last day, on or before today: expected, not imported yet. */
   expected: string[];
+  /** How a payday on a weekend moves. */
+  shift: WeekendShift;
   confirmed: boolean;
   evidence: Evidence;
   /** How many deposits it was seen in. */
@@ -71,7 +76,7 @@ export function paydays(view: RecurringView): Payday[] {
     .sort((a, b) => Number(b.confirmed) - Number(a.confirmed) || b.monthlyMinor - a.monthlyMinor)
     .map((x) => ({
       key: x.key, name: x.name, cadence: x.cadence, anchorDay: x.anchorDay, days: x.days, typicalMinor: x.typicalMinor, monthlyMinor: x.monthlyMinor,
-      lastDate: x.lastDate, nextDate: x.nextDate, expected: x.expected, confirmed: x.confirmed, evidence: x.evidence, count: x.seen.length,
+      lastDate: x.lastDate, nextDate: x.nextDate, expected: x.expected, shift: x.shift, confirmed: x.confirmed, evidence: x.evidence, count: x.seen.length,
     }));
 }
 
@@ -85,14 +90,18 @@ const step = (p: Payday, d: string, by: 1 | -1) => stepCadence(p.cadence, d, by,
 /** Where its calendar is anchored: the last deposit seen, else the next payday. */
 const anchorOf = (p: Payday) => p.lastDate ?? p.nextDate;
 
-/** The next `count` paydays on or after `from`. */
+const moved = (p: Payday, d: string) => businessDay(d, p.shift);
+
+/** The next `count` paydays on or after `from` (moved off weekends). */
 export function paydaysFrom(p: Payday, from: string, count = 3): string[] {
+  // Walk the calendar's own dates (the usual day), comparing where each is paid.
   let d = anchorOf(p);
-  for (let i = 0; i < 2000 && d < from; i++) d = step(p, d, 1);
-  for (let i = 0; i < 2000 && step(p, d, -1) >= from; i++) d = step(p, d, -1);
+  for (let i = 0; i < 2000 && moved(p, d) < from; i++) d = step(p, d, 1);
+  for (let i = 0; i < 2000 && moved(p, step(p, d, -1)) >= from; i++) d = step(p, d, -1);
   const out: string[] = [];
-  for (let i = 0; i < count; i++) {
-    out.push(d);
+  for (let i = 0; out.length < count && i < count + 3; i++) {
+    const m = moved(p, d);
+    if (m >= from && (out.length === 0 || m > out[out.length - 1])) out.push(m);
     d = step(p, d, 1);
   }
   return out;
@@ -125,9 +134,10 @@ export function expectedPaydays(p: Payday, through: string, today: string): stri
  */
 export function payPeriodOf(p: Payday, date: string): { from: string; to: string } {
   let start = anchorOf(p);
-  for (let i = 0; i < 2000 && start > date; i++) start = step(p, start, -1);
-  for (let i = 0; i < 2000 && step(p, start, 1) <= date; i++) start = step(p, start, 1);
-  const next = step(p, start, 1);
+  for (let i = 0; i < 2000 && moved(p, start) > date; i++) start = step(p, start, -1);
+  for (let i = 0; i < 2000 && moved(p, step(p, start, 1)) <= date; i++) start = step(p, start, 1);
+  const next = moved(p, step(p, start, 1));
+  start = moved(p, start);
   const [y, m, d] = next.split("-").map(Number);
   const before = new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
   return { from: start, to: before };

@@ -43,7 +43,7 @@
  * occurrences, or one) it says it needs more months or the person's OK.
  */
 import { cleanMerchant, words } from "./categorize";
-import { addDays, addMonths, dayOfMonth, daysBetween, daysInMonth, median, weekday } from "./dates";
+import { type WeekendShift, addDays, addMonths, businessDay, dayOfMonth, daysBetween, daysInMonth, median, weekday } from "./dates";
 import { activeMembers, type Category, type Config, type OutsideTotals, type RecurringRule, type Schedule, type Transaction, nothingOutside } from "./model";
 
 export type Cadence = "weekly" | "biweekly" | "semimonthly" | "monthly" | "yearly";
@@ -89,6 +89,8 @@ export interface RecurringItem {
   expected: string[];
   /** The dates after today in the next two months (nextDate first). */
   upcoming: string[];
+  /** How its dates move off a weekend (shiftOf); every date here is already moved. */
+  shift: WeekendShift;
   state: RecurringState;
   /** Days past nextDate (and its grace) as of the records' last day; 0 when upcoming or due. */
   overdueDays: number;
@@ -140,8 +142,15 @@ type Timing = Pick<RecurringItem, "nextDate" | "dueDate" | "expected" | "upcomin
  * step to the one after: late or missed only as of the records' last day
  * (through); between that and today, expected; next, the first after today.
  */
-function timing(c: Cadence, first: string, step: (d: string) => string | null, through: string, today: string): Timing {
+function timing(c: Cadence, nominal: string, step: (d: string) => string | null, through: string, today: string, shift: WeekendShift = null, lastSeen: string | null = null): Timing {
   const end = today < through ? through : today;
+  // A date moved back onto (or before) the last one seen was that one.
+  for (let i = 0; lastSeen && i < 3 && businessDay(nominal, shift) <= lastSeen; i++) {
+    const n = step(nominal);
+    if (!n || n <= nominal) break;
+    nominal = n;
+  }
+  const first = businessDay(nominal, shift);
   let state: RecurringState = "upcoming";
   let overdueDays = 0;
   if (first <= through) {
@@ -152,14 +161,43 @@ function timing(c: Cadence, first: string, step: (d: string) => string | null, t
   const expected: string[] = [];
   const upcoming: string[] = [];
   const horizon = addMonths(end, 2);
-  let d: string | null = first;
-  for (let i = 0; d && i < 400 && (d <= end || (d <= horizon && upcoming.length < 10) || upcoming.length === 0); i++) {
+  let n: string | null = nominal;
+  for (let i = 0; n && i < 400; i++) {
+    const d = businessDay(n, shift);
+    if (!(d <= end || (d <= horizon && upcoming.length < 10) || upcoming.length === 0)) break;
     if (d > end) upcoming.push(d);
     else if (d > through) expected.push(d);
-    const n = step(d);
-    d = n && n > d ? n : null;
+    const next = step(n);
+    n = next && next > n ? next : null;
   }
   return { nextDate: upcoming[0] ?? first, dueDate: first, expected, upcoming, state, overdueDays };
+}
+
+/**
+ * Which way its dates move off a weekend. Only a cadence tied to days of the
+ * month moves (a weekly one keeps its weekday). History decides: each time
+ * the usual day fell on a weekend, was it paid the Friday before, the Monday
+ * after, or on the day itself; the most common wins. With no such time seen,
+ * pay (money in) moves to the Friday before, as payroll does, and a bill
+ * keeps its date.
+ */
+export function shiftOf(kind: "expense" | "income", cadence: Cadence, dates: string[], days: number[]): WeekendShift {
+  if (cadence === "weekly" || cadence === "biweekly" || days.length === 0) return null;
+  const votes = { back: 0, forward: 0, keep: 0 };
+  for (const d of dates) {
+    let best: string | null = null;
+    for (const by of [-1, 0, 1]) for (const day of days) {
+      const c = addMonths(d, by, day);
+      if (Math.abs(daysBetween(c, d)) <= 3 && (!best || Math.abs(daysBetween(c, d)) < Math.abs(daysBetween(best, d)))) best = c;
+    }
+    if (!best || weekday(best) < 6) continue;
+    if (d < best) votes.back++;
+    else if (d > best) votes.forward++;
+    else votes.keep++;
+  }
+  const top = Math.max(votes.back, votes.forward, votes.keep);
+  if (top === 0) return kind === "income" ? "back" : null;
+  return votes.keep === top ? null : votes.back === top ? "back" : "forward";
 }
 
 /**
@@ -278,9 +316,11 @@ export function detect(g: Group, through: string, categories: Category[] = [], t
   if (seen.length === 1) {
     if (latest.recurrence !== "fixed" && !cat?.fixed) return null;
     const typical = seen[0].amountMinor;
+    const day = dayOfMonth(seen[0].date);
     const next = stepCadence("monthly", seen[0].date);
-    return { ...base, cadence: "monthly", anchorDay: dayOfMonth(seen[0].date), typicalMinor: typical, toleranceMinor: Math.max(1, Math.ceil(typical * 0.05)), varies: false,
-      ...timing("monthly", next, (d) => stepCadence("monthly", d, 1, { day: dayOfMonth(seen[0].date) }), through, today), skipped: 0, priceChange: null, evidence: "once", monthlyMinor: typical };
+    const shift = shiftOf(g.kind, "monthly", [seen[0].date], [day]);
+    return { ...base, cadence: "monthly", anchorDay: day, typicalMinor: typical, toleranceMinor: Math.max(1, Math.ceil(typical * 0.05)), varies: false, shift,
+      ...timing("monthly", next, (d) => stepCadence("monthly", d, 1, { day }), through, today, shift, seen[0].date), skipped: 0, priceChange: null, evidence: "once", monthlyMinor: typical };
   }
   const shape = classify(seen.map((s) => s.date));
   if (!shape) return null;
@@ -299,10 +339,12 @@ export function detect(g: Group, through: string, categories: Category[] = [], t
   const anchorDay = shape.cadence === "monthly" || shape.cadence === "yearly" ? Math.round(median(seen.map((s) => dayOfMonth(s.date)))) : undefined;
   const last = seen[seen.length - 1].date;
   const next = stepCadence(shape.cadence, last, 1, { day: anchorDay, days: shape.days });
+  const shift = shiftOf(g.kind, shape.cadence, seen.map((x) => x.date), shape.days ?? (anchorDay ? [anchorDay] : []));
   const regular = seen.length >= 3 && daysBetween(seen[0].date, last) >= 2 * CADENCE_DAYS[shape.cadence] - GRACE[shape.cadence];
   return {
     ...base, cadence: shape.cadence, anchorDay, days: shape.days, typicalMinor: typical, toleranceMinor: tolerance, varies: tolerance > typical * 0.1,
-    ...timing(shape.cadence, next, (d) => stepCadence(shape.cadence, d, 1, { day: anchorDay, days: shape.days }), through, today), skipped: shape.skipped, priceChange,
+    shift,
+    ...timing(shape.cadence, next, (d) => stepCadence(shape.cadence, d, 1, { day: anchorDay, days: shape.days }), through, today, shift, last), skipped: shape.skipped, priceChange,
     evidence: regular ? "regular" : "few", monthlyMinor: Math.round(typical * PER_MONTH[shape.cadence]),
   };
 }
@@ -379,6 +421,8 @@ function confirmedItem(key: string, rules: RecurringRule[], g: Group | undefined
   const after = lastDate ?? addDays(r.start_date, -1);
   const nexts = rules.map((x) => nextOccurrence(x, after)).filter((d): d is string => !!d).sort();
   const next = nexts[0] ?? r.start_date;
+  const shift = shiftOf(kind, cadenceOf(rules) ?? "monthly", seen.map((x) => x.date),
+    rules.every((x) => x.schedule.freq === "monthly" || x.schedule.freq === "yearly") ? rules.map(monthDay).filter((d) => d > 0) : []);
   const typical = rules.length === 2 ? Math.round((rules[0].template.amount_minor + rules[1].template.amount_minor) / 2) : r.template.amount_minor;
   const tolerance = toleranceOf(seen.slice(-6).map((s) => s.amountMinor).concat(typical), typical);
   const last = seen[seen.length - 1];
@@ -390,7 +434,8 @@ function confirmedItem(key: string, rules: RecurringRule[], g: Group | undefined
     key, kind, name: r.name, cadence,
     anchorDay: r.schedule.by_month_day ? monthDay(r) : undefined, days: rules.length === 2 ? [monthDay(rules[0]), monthDay(rules[1])].sort((a, b) => a - b) as [number, number] : undefined,
     typicalMinor: typical, toleranceMinor: tolerance, varies: tolerance > typical * 0.1, seen, lastDate,
-    ...timing(cadence, next, (d) => rules.map((x) => nextOccurrence(x, d)).filter((x): x is string => !!x).sort()[0] ?? null, through, today),
+    shift,
+    ...timing(cadence, next, (d) => rules.map((x) => nextOccurrence(x, d)).filter((x): x is string => !!x).sort()[0] ?? null, through, today, shift, lastDate),
     skipped: 0, priceChange, evidence: "confirmed", confirmed: true,
     ruleIds: rules.map((x) => x.id), categoryId: r.template.category_id ?? null, latest,
     monthlyMinor: Math.round(cadenceOf(rules) ? typical * perMonth : rules.reduce((n, x) => n + x.template.amount_minor * perMonthOf(x.schedule), 0)),

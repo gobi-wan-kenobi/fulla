@@ -1919,6 +1919,29 @@ test('a statement balance is saved per account and day, replaced on the same day
   rpcFails(ctx.db, mallory, 'fulla_balance_snapshot_save', { p_household_id: ctx.hh, p_snapshot: { account_id: main, as_of: '2030-01-31', balance_minor: 1 } });
 });
 
+test('what the Net worth screen reads: the statements of every account, oldest first, for any member', (ctx) => {
+  const carol = join(ctx, 'Carol');
+  const add = (a) => rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id: uuid(), ...a } }).accounts.find((x) => x.name === a.name).id;
+  const tfsa = add({ name: 'Example TFSA', type: 'investment' });
+  const card = add({ name: 'Example card', type: 'credit_card' });
+  const main = ctx.account('Main account');
+  const save = (account_id, as_of, balance_minor) => rpc(ctx.db, ctx.alice, 'fulla_balance_snapshot_save', { p_household_id: ctx.hh, p_snapshot: { account_id, as_of, balance_minor } });
+  save(tfsa, '2030-09-30', 2500000);
+  save(card, '2030-08-20', -90000);
+  save(card, '2030-09-20', -120000);
+  save(main, '2030-09-30', 500000);
+  const list = rpc(ctx.db, carol.user, 'fulla_balance_snapshots', { p_household_id: ctx.hh });
+  assert.deepEqual(list.map((s) => [s.as_of, s.balance_minor, s.source]), [
+    ['2030-08-20', -90000, 'statement'], ['2030-09-20', -120000, 'statement'],
+    ...[[main, 500000], [tfsa, 2500000]].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([, v]) => ['2030-09-30', v, 'statement']),
+  ]);
+  // Archiving an account keeps its statements (the screen leaves archived accounts out).
+  rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id: card, name: 'Example card', type: 'credit_card', archived: true } });
+  assert.equal(rpc(ctx.db, carol.user, 'fulla_balance_snapshots', { p_household_id: ctx.hh }).length, 4);
+  // Reading changes nothing.
+  assert.equal(ctx.db.admin(`select count(*) from fulla.transactions where household_id = ${h.literal(ctx.hh)};`).out, '0');
+});
+
 test('balance snapshots are not readable or writable directly, cannot be deleted, and go with the household', (ctx) => {
   const main = ctx.account('Main account');
   rpc(ctx.db, ctx.alice, 'fulla_balance_snapshot_save', { p_household_id: ctx.hh, p_snapshot: { account_id: main, as_of: '2030-01-31', balance_minor: 100 } });

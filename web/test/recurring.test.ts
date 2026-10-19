@@ -3,10 +3,10 @@
 // tolerance, next date, late or missed, a new price), what was confirmed,
 // and the rules a confirmation saves. Every amount and name here is invented.
 import { describe, expect, it } from "vitest";
-import { addDays } from "@/lib/dates";
+import { addDays, businessDay } from "@/lib/dates";
 import { type Account, type Category, type Config, type Member, type RecurringRule, type Transaction, outsideTotals } from "@/lib/model";
 import { expectedPaydays, nextPayday, payPeriodOf, payday, paydays, paydaysAfter, paydaysFrom } from "@/lib/period";
-import { archived, detect, editFor, editProblem, nextOccurrence, recurringGroups, recurringKey, recurringView, rulesFor, stepCadence, stillToCome } from "@/lib/recurring";
+import { archived, detect, shiftOf, editFor, editProblem, nextOccurrence, recurringGroups, recurringKey, recurringView, rulesFor, stepCadence, stillToCome } from "@/lib/recurring";
 import { category } from "./support";
 import { paydayLines, stateText } from "@/lib/recurringText";
 
@@ -70,7 +70,8 @@ describe("detecting what repeats", () => {
     const twice = ["2030-03-01", "2030-03-16", "2030-04-01", "2030-04-16"].map((d) => tx(d, "expense", 27500, "CITY CONDO FEES", RENT));
     expect(one(twice)).toMatchObject({ cadence: "semimonthly", days: [1, 16], dueDate: "2030-05-01", monthlyMinor: 55000 });
     const lastDay = ["2030-01-15", "2030-01-31", "2030-02-15", "2030-02-28", "2030-03-15"].map((d) => tx(d, "income", 180000, "EMPLOYER DEP", PAY));
-    expect(one(lastDay)).toMatchObject({ cadence: "semimonthly", days: [15, 31], dueDate: "2030-03-31" });
+    // Mar 31 2030 is a Sunday: pay moves to the Friday before.
+    expect(one(lastDay)).toMatchObject({ cadence: "semimonthly", days: [15, 31], dueDate: "2030-03-29", shift: "back" });
     const yearly = ["2027-05-10", "2028-05-11", "2029-05-10"].map((d) => tx(d, "expense", 12000, "DOMAIN RENEWAL", SUBS));
     expect(one(yearly)).toMatchObject({ cadence: "yearly", dueDate: "2030-05-10" });
   });
@@ -285,5 +286,58 @@ describe("between the records' last day and today: expected, not imported yet", 
     const nov = stillToCome(v, "2030-11-01", "2030-11-30");
     expect(nov.count).toBe(1 + 1 + 5);
     expect(nov.totalMinor).toBe(1649 + 4500 + 5 * 1500);
+  });
+});
+
+describe("dates on a weekend", () => {
+  it("move to the Friday before or the Monday after, or stay", () => {
+    expect(businessDay("2030-11-16", "back")).toBe("2030-11-15"); // Saturday
+    expect(businessDay("2030-11-17", "back")).toBe("2030-11-15"); // Sunday
+    expect(businessDay("2030-11-16", "forward")).toBe("2030-11-18");
+    expect(businessDay("2030-11-17", "forward")).toBe("2030-11-18");
+    expect(businessDay("2030-11-16", null)).toBe("2030-11-16");
+    expect(businessDay("2030-11-14", "back")).toBe("2030-11-14");
+  });
+
+  it("pay moves back by default; a bill keeps its date; history decides either way", () => {
+    expect(shiftOf("income", "monthly", ["2030-01-14"], [14])).toBe("back");
+    expect(shiftOf("expense", "monthly", ["2030-01-14"], [14])).toBeNull();
+    expect(shiftOf("income", "biweekly", ["2030-01-14"], [])).toBeNull();
+    // The 15th fell on Saturday Jun 15 2030 and Sunday Sep 15 2030: the bill came on the Monday after.
+    expect(shiftOf("expense", "monthly", ["2030-05-15", "2030-06-17", "2030-07-15", "2030-09-16"], [15])).toBe("forward");
+    expect(shiftOf("expense", "monthly", ["2030-06-14", "2030-07-15"], [15])).toBe("back");
+    // Paid on the Saturday itself: it stays.
+    expect(shiftOf("income", "monthly", ["2030-06-15", "2030-07-15"], [15])).toBeNull();
+    // The 1st on a Saturday (Jun 1 2030), paid Friday May 31.
+    expect(shiftOf("income", "monthly", ["2030-05-01", "2030-05-31", "2030-07-01"], [1])).toBe("back");
+  });
+
+  it("an expected payday and the next one on a weekend are the Friday before; the bills keep their day", () => {
+    // Pay seen once on Monday Sep 14 2026; Nov 14 2026 is a Saturday.
+    const v = recurringView([tx("2026-09-14", "income", 512000, "ACME PAYROLL", PAY, { recurrence: "fixed" }),
+      tx("2026-09-14", "expense", 1649, "STREAMCO", SUBS), tx("2026-10-03", "expense", 900, "LUNCH", FOOD)], cfg(), "2026-10-18", OUT);
+    const p = payday(v)!;
+    expect(p).toMatchObject({ shift: "back", expected: ["2026-10-14"], nextDate: "2026-11-13" });
+    expect(nextPayday(p, "2026-10-18")).toBe("2026-11-13");
+    expect(nextPayday(p, "2026-11-13")).toBe("2026-12-14");
+    expect(paydaysFrom(p, "2027-02-01", 3)).toEqual(["2027-02-12", "2027-03-12", "2027-04-14"]);
+    expect(payPeriodOf(p, "2026-11-20")).toEqual({ from: "2026-11-13", to: "2026-12-13" });
+    const bill = [...v.suggested].find((x) => x.key === "expense:streamco")!;
+    expect(bill).toMatchObject({ shift: null, nextDate: "2026-11-14" });
+  });
+
+  it("pay moved back onto the Friday is that payday, not one still to come", () => {
+    // The 15th, paid Friday Jun 14 2030 (Jun 15 is a Saturday): next is Jul 15.
+    const rows = ["2030-04-15", "2030-05-15", "2030-06-14"].map((d) => tx(d, "income", 300000, "EMPLOYER", PAY));
+    const v = recurringView(rows, cfg(), "2030-06-20", OUT);
+    expect(v.suggested[0]).toMatchObject({ shift: "back", anchorDay: 15, dueDate: "2030-07-15", expected: [], nextDate: "2030-07-15", state: "upcoming" });
+    const rule: RecurringRule = { id: id(740), name: "Pay", template: { kind: "income", amount_minor: 300000, note: "EMPLOYER", category_id: PAY.id },
+      schedule: { freq: "monthly", interval: 1, by_month_day: 15 }, start_date: "2030-04-15", end_date: null, auto_create: false, active: true, archived: false };
+    const c = recurringView(rows, cfg([rule]), "2030-06-20", OUT).confirmed[0];
+    expect(c).toMatchObject({ shift: "back", dueDate: "2030-07-15", nextDate: "2030-07-15", state: "upcoming" });
+    // And Sep 15 2030 is a Sunday: Friday Sep 13.
+    expect(c.upcoming).toContain("2030-08-15");
+    expect(recurringView(rows, cfg([rule]), "2030-08-20", OUT).confirmed[0].expected).toEqual(["2030-07-15", "2030-08-15"]);
+    expect(recurringView(rows, cfg([rule]), "2030-08-20", OUT).confirmed[0].nextDate).toBe("2030-09-13");
   });
 });

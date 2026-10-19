@@ -3,10 +3,11 @@
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Landmark, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import { monthOf, shiftMonth, today } from "@/lib/ledger";
+import { counted, monthOf, shiftMonth, today } from "@/lib/ledger";
 import type { Config } from "@/lib/model";
 import { formatMoney } from "@/lib/money";
-import { type BalanceSnapshot, holdings, overview, wholePercents } from "@/lib/overview";
+import { netWorth } from "@/lib/networth";
+import { type BalanceSnapshot, overview, wholePercents } from "@/lib/overview";
 import type { LocalRow } from "@/lib/sync";
 import { categoryTone } from "@/lib/budgets";
 import { BudgetBar, ProgressLine } from "./BudgetBar";
@@ -24,14 +25,14 @@ function monthLabel(month: string, locale: string): string {
  * what went out and what is left, then where the spending went, one plain row
  * per category. Figures come from lib/overview.ts.
  */
-export function OverviewScreen({ config, rows, snapshots: given, initialMonth, initialOpen, onTrend, onBudgets, onBalances, onInsights }: {
+export function OverviewScreen({ config, rows, snapshots: given, initialMonth, initialOpen, onTrend, onBudgets, onNetWorth, onInsights }: {
   config: Config; rows: LocalRow[]; snapshots?: BalanceSnapshot[]; initialMonth?: string; initialOpen?: string | null;
   /** A category tapped in "Where it went": its trend. */
   onTrend?: (categoryId: string) => void;
   /** The budget bar tapped: the Budgets screen. */
   onBudgets?: () => void;
-  /** What the accounts hold tapped: the Balances screen. */
-  onBalances?: () => void;
+  /** What the accounts hold tapped: the Net worth screen. */
+  onNetWorth?: () => void;
   /** The Insights screen: payday, what repeats, the month in figures. */
   onInsights?: () => void;
 }) {
@@ -53,7 +54,8 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
     () => overview(rows, config.categories, month, today(), config.accounts, { budgets: config.budgets, trips: config.trips }),
     [rows, config.categories, config.accounts, config.budgets, config.trips, month],
   );
-  const held = useMemo(() => holdings(rows, config.accounts, snapshots, today()), [rows, config.accounts, snapshots]);
+  const nw = useMemo(() => netWorth(config, counted(rows), snapshots, today()), [config, rows, snapshots]);
+  const held = nw.known ? nw : null;
   const f = view.figures;
   const money = (n: number, signed = false) => formatMoney(n, currency, locale, signed);
   const category = (id: string | null) => (id ? config.categories.find((c) => c.id === id) : undefined);
@@ -99,25 +101,25 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
 
       <BudgetBar status={view.budget} money={(n) => money(n)} onOpen={onBudgets} />
 
-      {(held || onBalances) && (() => {
+      {(held || onNetWorth) && (() => {
         const inner = (
           <>
             <Landmark size={22} className="text-ink-muted shrink-0" aria-hidden />
             <div className="flex-1 min-w-0">
-              <div className="t-body">{held ? "What the accounts hold" : "Balances"}</div>
+              <div className="t-body">{held ? "Net worth" : "What the accounts hold"}</div>
               <div className="t-secondary text-ink-muted">
                 {held
-                  ? <>Today, from statement and opening balances{held.known < openAccounts ? ` · ${held.known} of ${openAccounts} accounts` : ""}</>
-                  : "Each account, and who owes whom"}
+                  ? <>What the accounts hold, less cards{held.missing.length > 0 ? ` · ${held.missing.length} not counted yet` : ""}{held.stale.length > 0 ? ` · ${held.stale.length} stale` : ""}</>
+                  : `Import a statement to see it · ${openAccounts} account${openAccounts === 1 ? "" : "s"}`}
               </div>
             </div>
-            {held && <div className="t-amount">{money(held.totalMinor)}</div>}
-            {onBalances && <ChevronRight size={18} className="text-ink-muted shrink-0" />}
+            {held && <div className={`t-amount ${held.totalMinor < 0 ? "text-money-out" : ""}`} data-testid="overview-networth">{money(held.totalMinor)}</div>}
+            {onNetWorth && <ChevronRight size={18} className="text-ink-muted shrink-0" />}
           </>
         );
         const cls = "w-full flex items-center gap-4 px-5 py-3 mt-3 border-y border-line text-left";
-        return onBalances
-          ? <button type="button" onClick={onBalances} className={`${cls} yields`} data-testid="overview-holdings">{inner}</button>
+        return onNetWorth
+          ? <button type="button" onClick={onNetWorth} className={`${cls} yields`} data-testid="overview-holdings">{inner}</button>
           : <div className={cls} data-testid="overview-holdings">{inner}</div>;
       })()}
 
