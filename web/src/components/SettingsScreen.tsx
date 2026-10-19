@@ -10,7 +10,7 @@ import { Avatar, Chip, ScreenHeader, Section, SecondaryButton } from "./Pieces";
 import { AccountScreen } from "./AccountScreen";
 import { RulesScreen } from "./RulesScreen";
 
-export function SettingsScreen({ config, households, rows, onConfig, onBulk, onSwitch, onSignOut, onAddHousehold, accountId, onAccount, onOpen, onBudgets }: {
+export function SettingsScreen({ config, households, rows, onConfig, onBulk, onSwitch, onSignOut, onAddHousehold, accountId, onAccount, onOpen, onBudgets, onBalances }: {
   config: Config;
   households: Membership[];
   rows: LocalRow[];
@@ -24,6 +24,7 @@ export function SettingsScreen({ config, households, rows, onConfig, onBulk, onS
   onAccount?: (id: string | null) => void;
   onOpen?: (row: LocalRow) => void;
   onBudgets?: () => void;
+  onBalances?: () => void;
 }) {
   const [rules, setRules] = useState(false);
   const [invite, setInvite] = useState<{ code: string; expires_at: string } | null>(null);
@@ -96,6 +97,15 @@ export function SettingsScreen({ config, households, rows, onConfig, onBulk, onS
           <div>
             <div className="t-body">Budgets and fixed costs</div>
             <div className="t-secondary text-ink-muted">{config.budgets.filter((b) => b.amount_minor > 0).length ? "A monthly amount per category" : "None set yet"}</div>
+          </div>
+          <ChevronRight size={20} className="text-ink-muted" />
+        </button>
+      )}
+      {onBalances && (
+        <button type="button" data-testid="open-balances" onClick={onBalances} className="w-full flex items-center justify-between px-5 py-3 text-left yields">
+          <div>
+            <div className="t-body">Balances</div>
+            <div className="t-secondary text-ink-muted">{config.members.filter((m) => m.status === "active").length >= 2 && config.household.money_mode !== "shared" ? "Who owes whom, and what each account holds" : "What each account holds"}</div>
           </div>
           <ChevronRight size={20} className="text-ink-muted" />
         </button>

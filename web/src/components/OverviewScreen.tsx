@@ -24,12 +24,14 @@ function monthLabel(month: string, locale: string): string {
  * what went out and what is left, then where the spending went, one plain row
  * per category. Figures come from lib/overview.ts.
  */
-export function OverviewScreen({ config, rows, snapshots: given, initialMonth, initialOpen, onTrend, onBudgets }: {
+export function OverviewScreen({ config, rows, snapshots: given, initialMonth, initialOpen, onTrend, onBudgets, onBalances }: {
   config: Config; rows: LocalRow[]; snapshots?: BalanceSnapshot[]; initialMonth?: string; initialOpen?: string | null;
   /** A category tapped in "Where it went": its trend. */
   onTrend?: (categoryId: string) => void;
   /** The budget bar tapped: the Budgets screen. */
   onBudgets?: () => void;
+  /** What the accounts hold tapped: the Balances screen. */
+  onBalances?: () => void;
 }) {
   const locale = config.household.locale || "en-CA";
   const currency = config.household.currency;
@@ -95,18 +97,27 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
 
       <BudgetBar status={view.budget} money={(n) => money(n)} onOpen={onBudgets} />
 
-      {held && (
-        <div className="flex items-center gap-4 px-5 py-3 mt-3 border-y border-line" data-testid="overview-holdings">
-          <Landmark size={22} className="text-ink-muted shrink-0" aria-hidden />
-          <div className="flex-1 min-w-0">
-            <div className="t-body">What the accounts hold</div>
-            <div className="t-secondary text-ink-muted">
-              Today, from statement and opening balances{held.known < openAccounts ? ` · ${held.known} of ${openAccounts} accounts` : ""}
+      {(held || onBalances) && (() => {
+        const inner = (
+          <>
+            <Landmark size={22} className="text-ink-muted shrink-0" aria-hidden />
+            <div className="flex-1 min-w-0">
+              <div className="t-body">{held ? "What the accounts hold" : "Balances"}</div>
+              <div className="t-secondary text-ink-muted">
+                {held
+                  ? <>Today, from statement and opening balances{held.known < openAccounts ? ` · ${held.known} of ${openAccounts} accounts` : ""}</>
+                  : "Each account, and who owes whom"}
+              </div>
             </div>
-          </div>
-          <div className="t-amount">{money(held.totalMinor)}</div>
-        </div>
-      )}
+            {held && <div className="t-amount">{money(held.totalMinor)}</div>}
+            {onBalances && <ChevronRight size={18} className="text-ink-muted shrink-0" />}
+          </>
+        );
+        const cls = "w-full flex items-center gap-4 px-5 py-3 mt-3 border-y border-line text-left";
+        return onBalances
+          ? <button type="button" onClick={onBalances} className={`${cls} yields`} data-testid="overview-holdings">{inner}</button>
+          : <div className={cls} data-testid="overview-holdings">{inner}</div>;
+      })()}
 
       {nothing ? (
         <EmptyState title="Nothing this month yet" text="What you add or import shows up here: what came in, what went out, and where it went." />

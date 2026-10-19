@@ -5,6 +5,8 @@ import { useState } from "react";
 import type { Membership } from "@/lib/api";
 import { useHousehold } from "@/lib/store";
 import type { LocalRow } from "@/lib/sync";
+import { AccountScreen } from "./AccountScreen";
+import { BalancesScreen } from "./BalancesScreen";
 import { BudgetsScreen } from "./BudgetsScreen";
 import { EntryScreen } from "./EntryScreen";
 import { HistoryScreen } from "./HistoryScreen";
@@ -37,6 +39,9 @@ export function Main(props: {
   const [accountId, setAccountId] = useState<string | null>(null);
   // Budgets opens over the tab it came from (Overview or Settings) and goes back to it.
   const [budgets, setBudgets] = useState(false);
+  // Balances opens the same way, and an account tapped in it opens its page over it.
+  const [balances, setBalances] = useState(false);
+  const [balanceAccount, setBalanceAccount] = useState<string | null>(null);
   // Trends opened from a category in the Overview: that category (a new key, so the screen starts from it).
   const [trendFrom, setTrendFrom] = useState<{ category: string | null; key: number }>({ category: null, key: 0 });
   const config = household.config;
@@ -62,10 +67,14 @@ export function Main(props: {
             }}
             onClose={() => setEditing(null)}
           />
+        ) : balances && balanceAccount && config.accounts.some((a) => a.id === balanceAccount) ? (
+          <AccountScreen config={config} account={config.accounts.find((a) => a.id === balanceAccount)!} rows={household.rows} onOpen={setEditing} onClose={() => setBalanceAccount(null)} />
+        ) : balances ? (
+          <BalancesScreen config={config} rows={household.rows} onSave={(tx) => household.saveTransaction(tx)} onAccount={setBalanceAccount} onClose={() => setBalances(false)} />
         ) : budgets ? (
           <BudgetsScreen config={config} rows={household.rows} onConfig={household.setConfig} onClose={() => setBudgets(false)} />
         ) : tab === "overview" ? (
-          <OverviewScreen config={config} rows={household.rows} onBudgets={() => setBudgets(true)} onTrend={(category) => { setTrendFrom((t) => ({ category, key: t.key + 1 })); setTab("trends"); }} />
+          <OverviewScreen config={config} rows={household.rows} onBudgets={() => setBudgets(true)} onBalances={() => setBalances(true)} onTrend={(category) => { setTrendFrom((t) => ({ category, key: t.key + 1 })); setTab("trends"); }} />
         ) : tab === "trends" ? (
           <TrendsScreen key={trendFrom.key} config={config} rows={household.rows} initialCategory={trendFrom.category} onImport={() => setTab("import")} />
         ) : tab === "add" ? (
@@ -75,7 +84,7 @@ export function Main(props: {
         ) : tab === "import" ? (
           <ImportScreen config={config} rows={household.rows} onImport={household.importTransactions} onConfig={household.setConfig} />
         ) : (
-          <SettingsScreen config={config} households={props.households} rows={household.rows} onConfig={household.setConfig} onBulk={household.saveTransactions} onSwitch={props.onSwitch} onSignOut={props.onSignOut} onAddHousehold={props.onAddHousehold} accountId={accountId} onAccount={setAccountId} onOpen={setEditing} onBudgets={() => setBudgets(true)} />
+          <SettingsScreen config={config} households={props.households} rows={household.rows} onConfig={household.setConfig} onBulk={household.saveTransactions} onSwitch={props.onSwitch} onSignOut={props.onSignOut} onAddHousehold={props.onAddHousehold} accountId={accountId} onAccount={setAccountId} onOpen={setEditing} onBudgets={() => setBudgets(true)} onBalances={() => setBalances(true)} />
         )}
       </div>
       {!editing && (
@@ -86,7 +95,7 @@ export function Main(props: {
                 key={key}
                 type="button"
                 data-testid={`tab-${key}`}
-                onClick={() => { setTab(key); setAccountId(null); setBudgets(false); }}
+                onClick={() => { setTab(key); setAccountId(null); setBudgets(false); setBalances(false); setBalanceAccount(null); }}
                 className="yields flex flex-col items-center gap-1 py-2 min-w-0"
                 aria-current={tab === key ? "page" : undefined}
               >

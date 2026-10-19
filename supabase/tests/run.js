@@ -1428,6 +1428,28 @@ test('in a shared pot a new expense is stored as its payer\'s alone, and the pho
   assert.deepEqual(balances.map((b) => b.balance_minor), balances.map(() => 0), 'nobody owes anybody');
 });
 
+test('a payment recorded on the web Balances screen is a settlement any member may write, and it clears the debt', (ctx) => {
+  const bob = join(ctx, 'Bob');
+  const meal = expense(ctx, { amount_minor: 9040, members: [ctx.aliceMember, bob.member] });
+  push(ctx, ctx.alice, [upsert(meal)]);
+  const owed = Object.fromEntries(rpc(ctx.db, ctx.alice, 'fulla_member_balances', { p_household_id: ctx.hh }).map((b) => [b.member_id, b.balance_minor]));
+  assert.equal(owed[bob.member], -4520);
+  // The row as web/src/lib/balances.ts settlementFor writes it, stamped as sync.ts createRow stamps a new row:
+  // every field, no account, no category, no split.
+  const settle = {
+    id: uuid(), kind: 'settlement', date: '2030-01-20', amount_minor: 4520, category_id: null, account_id: null, to_account_id: null,
+    paid_by_member_id: bob.member, to_member_id: ctx.aliceMember, split: null, recurrence: 'variable', note: '', tags: [], extras: {},
+    status: 'active', recurring_rule_id: null, occurrence_date: null, import_fingerprint: null, original_currency: null, trip_id: null,
+    created_at: iso(), client_updated_at: iso(), server_seq: 0, created_by_member_id: bob.member,
+  };
+  const [r] = push(ctx, bob.user, [upsert(settle, settle.client_updated_at)]);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.applied, true);
+  const after = rpc(ctx.db, ctx.alice, 'fulla_member_balances', { p_household_id: ctx.hh });
+  assert.deepEqual(after.map((b) => b.balance_minor), after.map(() => 0), 'all settled');
+  assert.equal(stored(ctx, settle.id).account_id, null, 'no account sees it');
+});
+
 test('an edit of a row written before the shared pot keeps its split', (ctx) => {
   const bob = join(ctx, 'Bob');
   const both = { mode: 'equal', members: [ctx.aliceMember, bob.member] };
