@@ -5,6 +5,7 @@
  * database's JSON. Nothing reads or writes a table directly; PostgREST only
  * exposes the public.fulla_* functions.
  */
+import type { Goal, GoalContribution } from "./goals";
 import type { ModelAnswer, ModelItem } from "./categorizer";
 import type { Account, Budget, CategorizationRule, Category, Config, RecurringRule, SavedImportProfile } from "./model";
 import type { Mutation, PullPage, PushResult } from "./sync";
@@ -39,6 +40,8 @@ export interface Joined {
   member_id: string;
   config: Config;
 }
+
+export interface GoalsBundle { goals: Goal[]; contributions: GoalContribution[] }
 
 export const api = {
   myHouseholds: () => call<Membership[]>("fulla_my_households"),
@@ -75,6 +78,12 @@ export const api = {
   budgetUpsert: (householdId: string, budget: Budget) => call<Config>("fulla_budget_upsert", { p_household_id: householdId, p_budget: budget }),
   /** Every category's limit of one month (its own or the default) as the other month's own; limits it already has stay. */
   budgetCopy: (householdId: string, from: string, to: string) => call<Config>("fulla_budget_copy", { p_household_id: householdId, p_from_period: from, p_to_period: to }),
+  /** The household's goals and the contributions recorded against them (0033). */
+  goals: (householdId: string) => call<GoalsBundle>("fulla_goals", { p_household_id: householdId }),
+  /** Creates or changes a goal (admin); archived, never deleted. */
+  goalUpsert: (householdId: string, goal: Goal) => call<GoalsBundle>("fulla_goal_upsert", { p_household_id: householdId, p_goal: goal }),
+  /** Records, changes or voids a contribution towards a goal (any member). */
+  goalContributionSave: (householdId: string, c: GoalContribution & { voided?: boolean }) => call<GoalsBundle>("fulla_goal_contribution_save", { p_household_id: householdId, p_contribution: c }),
   /** A recurring item (admin): a confirmed suggestion, an edit, or one archived. Returns the config. Never auto_create from the web. */
   recurringUpsert: (householdId: string, rule: RecurringRule) => call<Config>("fulla_recurring_upsert", { p_household_id: householdId, p_rule: rule }),
   /** The suggestion keys the household dismissed (0031). */

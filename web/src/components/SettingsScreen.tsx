@@ -10,7 +10,7 @@ import { Avatar, Chip, ScreenHeader, Section, SecondaryButton } from "./Pieces";
 import { AccountScreen } from "./AccountScreen";
 import { RulesScreen } from "./RulesScreen";
 
-export function SettingsScreen({ config, households, rows, onConfig, onBulk, onSwitch, onSignOut, onAddHousehold, accountId, onAccount, onOpen, onBudgets, onBalances, onNetWorth, onInsights }: {
+export function SettingsScreen({ config, households, rows, onConfig, onBulk, onSwitch, onSignOut, onAddHousehold, accountId, onAccount, onOpen, onBudgets, onBalances, onNetWorth, onGoals, onInsights }: {
   config: Config;
   households: Membership[];
   rows: LocalRow[];
@@ -26,6 +26,7 @@ export function SettingsScreen({ config, households, rows, onConfig, onBulk, onS
   onBudgets?: () => void;
   onBalances?: () => void;
   onNetWorth?: () => void;
+  onGoals?: () => void;
   onInsights?: () => void;
 }) {
   const [rules, setRules] = useState(false);
@@ -108,6 +109,15 @@ export function SettingsScreen({ config, households, rows, onConfig, onBulk, onS
           <div>
             <div className="t-body">Insights, recurring and payday</div>
             <div className="t-secondary text-ink-muted">{(config.recurring_rules ?? []).filter((r) => !r.archived && r.active).length ? "What repeats, confirmed and suggested" : "Suggestions from what repeats"}</div>
+          </div>
+          <ChevronRight size={20} className="text-ink-muted" />
+        </button>
+      )}
+      {onGoals && (
+        <button type="button" data-testid="open-goals" onClick={onGoals} className="w-full flex items-center justify-between px-5 py-3 text-left yields">
+          <div>
+            <div className="t-body">Goals</div>
+            <div className="t-secondary text-ink-muted">Saving towards something, a month at a time</div>
           </div>
           <ChevronRight size={20} className="text-ink-muted" />
         </button>

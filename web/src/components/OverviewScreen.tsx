@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 "use client";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Landmark, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Flag, Landmark, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { counted, monthOf, shiftMonth, today } from "@/lib/ledger";
@@ -25,7 +25,7 @@ function monthLabel(month: string, locale: string): string {
  * what went out and what is left, then where the spending went, one plain row
  * per category. Figures come from lib/overview.ts.
  */
-export function OverviewScreen({ config, rows, snapshots: given, initialMonth, initialOpen, onTrend, onBudgets, onNetWorth, onInsights }: {
+export function OverviewScreen({ config, rows, snapshots: given, initialMonth, initialOpen, onTrend, onBudgets, onNetWorth, onGoals, onInsights }: {
   config: Config; rows: LocalRow[]; snapshots?: BalanceSnapshot[]; initialMonth?: string; initialOpen?: string | null;
   /** A category tapped in "Where it went": its trend. */
   onTrend?: (categoryId: string) => void;
@@ -33,6 +33,8 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
   onBudgets?: () => void;
   /** What the accounts hold tapped: the Net worth screen. */
   onNetWorth?: () => void;
+  /** The Goals screen. */
+  onGoals?: () => void;
   /** The Insights screen: payday, what repeats, the month in figures. */
   onInsights?: () => void;
 }) {
@@ -122,6 +124,17 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
           ? <button type="button" onClick={onNetWorth} className={`${cls} yields`} data-testid="overview-holdings">{inner}</button>
           : <div className={cls} data-testid="overview-holdings">{inner}</div>;
       })()}
+
+      {onGoals && (
+        <button type="button" onClick={onGoals} data-testid="open-goals" className="w-full flex items-center gap-4 px-5 py-3 border-b border-line text-left yields">
+          <Flag size={22} className="text-ink-muted shrink-0" aria-hidden />
+          <div className="flex-1 min-w-0">
+            <div className="t-body">Goals</div>
+            <div className="t-secondary text-ink-muted">What to save each month, and where it could come from</div>
+          </div>
+          <ChevronRight size={18} className="text-ink-muted shrink-0" />
+        </button>
+      )}
 
       {onInsights && (
         <button type="button" onClick={onInsights} data-testid="open-insights" className="w-full flex items-center gap-4 px-5 py-3 border-b border-line text-left yields">

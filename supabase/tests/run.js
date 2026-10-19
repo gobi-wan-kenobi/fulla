@@ -236,6 +236,9 @@ test('a stranger gets not_member from every function that takes a household', (c
     ['fulla_recurring_upsert', { p_household_id: hh, p_rule: {} }],
     ['fulla_recurring_dismissals', { p_household_id: hh }],
     ['fulla_recurring_dismiss', { p_household_id: hh, p_key: 'expense:x' }],
+    ['fulla_goals', { p_household_id: hh }],
+    ['fulla_goal_upsert', { p_household_id: hh, p_goal: {} }],
+    ['fulla_goal_contribution_save', { p_household_id: hh, p_contribution: {} }],
     ['fulla_rule_upsert', { p_household_id: hh, p_rule: {} }],
     ['fulla_import_profile_upsert', { p_household_id: hh, p_profile: {} }],
     ['fulla_trip_upsert', { p_household_id: hh, p_trip: {} }],
@@ -488,6 +491,7 @@ test('a member cannot change the structure; an admin can; neither can do what on
     ['fulla_budget_copy', { p_household_id: hh, p_from_period: '2030-01', p_to_period: '2030-02' }],
     ['fulla_recurring_upsert', { p_household_id: hh, p_rule: {} }],
     ['fulla_recurring_dismiss', { p_household_id: hh, p_key: 'expense:x' }],
+    ['fulla_goal_upsert', { p_household_id: hh, p_goal: {} }],
     ['fulla_rule_upsert', { p_household_id: hh, p_rule: {} }],
     ['fulla_member_set_role', { p_household_id: hh, p_member_id: bob.member, p_role: 'member' }],
     ['fulla_owner_transfer', { p_household_id: hh, p_member_id: bob.member }],
@@ -773,6 +777,44 @@ test('what the web saves when a suggestion is confirmed: tracked rules only, no 
   expectError(ctx.db, bob.user, 'fulla_recurring_upsert', { p_household_id: ctx.hh, p_rule: { ...rules[0], id: uuid() } }, 'forbidden_role', 403);
   // Two people and no split is refused, as for a transaction.
   expectError(ctx.db, ctx.alice, 'fulla_recurring_upsert', { p_household_id: ctx.hh, p_rule: { ...rules[0], id: uuid(), template: { ...template, split: null } } }, 'validation_failed');
+});
+
+test('goals: admins set them, every member sees them and records contributions (0033)', (ctx) => {
+  const bob = join(ctx, 'Bob');
+  const tfsa = rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id: uuid(), name: 'Example TFSA', type: 'investment' } }).accounts.find((a) => a.name === 'Example TFSA').id;
+  const goal = { id: uuid(), name: 'House deposit', target_minor: 10000000, target_date: '2031-06-30', account_id: tfsa, start_minor: 2500000, start_date: '2030-01-01' };
+  const saved = rpc(ctx.db, ctx.alice, 'fulla_goal_upsert', { p_household_id: ctx.hh, p_goal: goal });
+  assert.deepEqual(saved.goals, [{ ...goal, monthly_minor: null, archived: false }]);
+  assert.deepEqual(rpc(ctx.db, bob.user, 'fulla_goals', { p_household_id: ctx.hh }).goals.map((g) => g.name), ['House deposit']);
+  const car = { id: uuid(), name: 'Car', target_minor: 1500000, monthly_minor: 50000, start_date: '2030-01-01' };
+  rpc(ctx.db, ctx.alice, 'fulla_goal_upsert', { p_household_id: ctx.hh, p_goal: car });
+  const c1 = { id: uuid(), goal_id: car.id, date: '2030-02-01', amount_minor: 50000, note: 'February' };
+  const after = rpc(ctx.db, bob.user, 'fulla_goal_contribution_save', { p_household_id: ctx.hh, p_contribution: c1 });
+  assert.deepEqual(after.contributions, [c1]);
+  const voided = rpc(ctx.db, bob.user, 'fulla_goal_contribution_save', { p_household_id: ctx.hh, p_contribution: { ...c1, voided: true } });
+  assert.deepEqual(voided.contributions, [], 'a voided contribution is not listed');
+  // Archived, not deleted.
+  const archived = rpc(ctx.db, ctx.alice, 'fulla_goal_upsert', { p_household_id: ctx.hh, p_goal: { ...car, archived: true } });
+  assert.equal(archived.goals.find((g) => g.id === car.id).archived, true);
+  expectError(ctx.db, bob.user, 'fulla_goal_upsert', { p_household_id: ctx.hh, p_goal: { ...goal, name: 'Mine' } }, 'forbidden_role', 403);
+  const fails = (g) => expectError(ctx.db, ctx.alice, 'fulla_goal_upsert', { p_household_id: ctx.hh, p_goal: g }, 'validation_failed');
+  fails({ ...goal, id: uuid(), name: '' });
+  fails({ ...goal, id: uuid(), target_minor: 0 });
+  fails({ ...goal, id: uuid(), target_date: null });
+  fails({ ...goal, id: uuid(), target_date: '2029-12-31' });
+  fails({ ...goal, id: uuid(), monthly_minor: -5 });
+  fails({ ...goal, id: uuid(), account_id: uuid() });
+  const cfails = (c) => expectError(ctx.db, bob.user, 'fulla_goal_contribution_save', { p_household_id: ctx.hh, p_contribution: c }, 'validation_failed');
+  cfails({ ...c1, id: uuid(), goal_id: uuid() });
+  cfails({ ...c1, id: uuid(), amount_minor: 0 });
+  cfails({ ...c1, id: uuid(), date: 'soon' });
+  assert.equal(ctx.db.as(bob.user, 'select count(*) from fulla.goals;', { expectFailure: true }).ok, false, 'only through the functions');
+  assert.equal(ctx.db.admin('delete from fulla.goals;', { expectFailure: true }).ok, false);
+  assert.equal(ctx.db.admin('delete from fulla.goal_contributions;', { expectFailure: true }).ok, false);
+  assert.equal(ctx.db.admin(`select count(*) from fulla.transactions where household_id = ${h.literal(ctx.hh)};`).out, '0', 'a goal never writes a transaction');
+  ctx.db.admin(`select fulla.erase_household(${h.literal(ctx.hh)});`);
+  assert.equal(ctx.db.admin('select count(*) from fulla.goals;').out, '0');
+  assert.equal(ctx.db.admin('select count(*) from fulla.goal_contributions;').out, '0');
 });
 
 test('categorisation rules must do something valid', (ctx) => {
