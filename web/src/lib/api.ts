@@ -6,7 +6,7 @@
  * exposes the public.fulla_* functions.
  */
 import type { ModelAnswer, ModelItem } from "./categorizer";
-import type { Account, CategorizationRule, Category, Config, SavedImportProfile } from "./model";
+import type { Account, Budget, CategorizationRule, Category, Config, SavedImportProfile } from "./model";
 import type { Mutation, PullPage, PushResult } from "./sync";
 import { supabase } from "./supabase";
 
@@ -71,6 +71,10 @@ export const api = {
   balanceSnapshots: (householdId: string) =>
     call<{ id: string; account_id: string; as_of: string; balance_minor: number; source: string }[]>("fulla_balance_snapshots", { p_household_id: householdId }),
   categoryUpsert: (householdId: string, category: Category) => call<Config>("fulla_category_upsert", { p_household_id: householdId, p_category: category }),
+  /** A category's limit, for every month (period null) or one; admins only. Saving 0 removes it (rows are never deleted). */
+  budgetUpsert: (householdId: string, budget: Budget) => call<Config>("fulla_budget_upsert", { p_household_id: householdId, p_budget: budget }),
+  /** Every category's limit of one month (its own or the default) as the other month's own; limits it already has stay. */
+  budgetCopy: (householdId: string, from: string, to: string) => call<Config>("fulla_budget_copy", { p_household_id: householdId, p_from_period: from, p_to_period: to }),
   ruleUpsert: (householdId: string, rule: CategorizationRule) => call<Config>("fulla_rule_upsert", { p_household_id: householdId, p_rule: rule }),
   importProfileUpsert: (householdId: string, profile: SavedImportProfile) =>
     call<Config>("fulla_import_profile_upsert", { p_household_id: householdId, p_profile: profile }),

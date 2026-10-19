@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { Membership } from "@/lib/api";
 import { useHousehold } from "@/lib/store";
 import type { LocalRow } from "@/lib/sync";
+import { BudgetsScreen } from "./BudgetsScreen";
 import { EntryScreen } from "./EntryScreen";
 import { HistoryScreen } from "./HistoryScreen";
 import { ImportScreen } from "./ImportScreen";
@@ -34,6 +35,8 @@ export function Main(props: {
   const [tab, setTab] = useState<Tab>("overview");
   const [editing, setEditing] = useState<LocalRow | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
+  // Budgets opens over the tab it came from (Overview or Settings) and goes back to it.
+  const [budgets, setBudgets] = useState(false);
   // Trends opened from a category in the Overview: that category (a new key, so the screen starts from it).
   const [trendFrom, setTrendFrom] = useState<{ category: string | null; key: number }>({ category: null, key: 0 });
   const config = household.config;
@@ -59,8 +62,10 @@ export function Main(props: {
             }}
             onClose={() => setEditing(null)}
           />
+        ) : budgets ? (
+          <BudgetsScreen config={config} rows={household.rows} onConfig={household.setConfig} onClose={() => setBudgets(false)} />
         ) : tab === "overview" ? (
-          <OverviewScreen config={config} rows={household.rows} onTrend={(category) => { setTrendFrom((t) => ({ category, key: t.key + 1 })); setTab("trends"); }} />
+          <OverviewScreen config={config} rows={household.rows} onBudgets={() => setBudgets(true)} onTrend={(category) => { setTrendFrom((t) => ({ category, key: t.key + 1 })); setTab("trends"); }} />
         ) : tab === "trends" ? (
           <TrendsScreen key={trendFrom.key} config={config} rows={household.rows} initialCategory={trendFrom.category} onImport={() => setTab("import")} />
         ) : tab === "add" ? (
@@ -70,7 +75,7 @@ export function Main(props: {
         ) : tab === "import" ? (
           <ImportScreen config={config} rows={household.rows} onImport={household.importTransactions} onConfig={household.setConfig} />
         ) : (
-          <SettingsScreen config={config} households={props.households} rows={household.rows} onConfig={household.setConfig} onBulk={household.saveTransactions} onSwitch={props.onSwitch} onSignOut={props.onSignOut} onAddHousehold={props.onAddHousehold} accountId={accountId} onAccount={setAccountId} onOpen={setEditing} />
+          <SettingsScreen config={config} households={props.households} rows={household.rows} onConfig={household.setConfig} onBulk={household.saveTransactions} onSwitch={props.onSwitch} onSignOut={props.onSignOut} onAddHousehold={props.onAddHousehold} accountId={accountId} onAccount={setAccountId} onOpen={setEditing} onBudgets={() => setBudgets(true)} />
         )}
       </div>
       {!editing && (
@@ -81,7 +86,7 @@ export function Main(props: {
                 key={key}
                 type="button"
                 data-testid={`tab-${key}`}
-                onClick={() => { setTab(key); setAccountId(null); }}
+                onClick={() => { setTab(key); setAccountId(null); setBudgets(false); }}
                 className="yields flex flex-col items-center gap-1 py-2 min-w-0"
                 aria-current={tab === key ? "page" : undefined}
               >

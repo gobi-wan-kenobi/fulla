@@ -160,7 +160,7 @@ export function overview(
     running: month === monthOf(todayDate),
     figures,
     hero: hero(figures.incomeMinor, figures.spentMinor),
-    budget: monthBudget(limits, used),
+    budget: monthBudget(limits, used, categories),
     categories: byCategory(txs, categories, month, outside).map((c) => {
       const limit = c.categoryId ? limits.get(c.categoryId) : undefined;
       return { ...c, budget: limit ? budgetStatus(limit, used.get(c.categoryId!) ?? 0) : null };

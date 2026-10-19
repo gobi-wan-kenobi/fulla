@@ -95,8 +95,8 @@ export function HeroJar({ hero, money, description }: {
         <rect x={inner.x} y={inner.y} width={inner.w} height={inner.h} rx={j.radius} fill="none" stroke="var(--line)" strokeWidth={j.stroke} />
       </svg>
       <div className="absolute inset-x-6 text-center pointer-events-none" style={{ top: `${(figureTop(j, deficit) / HEIGHT) * 100}%` }}>
-        {/* Over the income liquid the figure is drawn in paper, which inverts with the liquid in both themes. */}
-        <div className={`t-hero truncate ${overIncome ? "text-paper" : "text-ink"}`} data-testid="jar-figure">{money(shown)}</div>
+        {/* Over the income liquid the figure is dark in both themes (--jar-over: ink in light, paper in dark), so it reads on the gold. */}
+        <div className={`t-hero truncate ${overIncome ? "text-[var(--jar-over)]" : "text-ink"}`} data-testid="jar-figure">{money(shown)}</div>
       </div>
       </div>
     </div>

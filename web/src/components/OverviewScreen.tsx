@@ -8,6 +8,7 @@ import type { Config } from "@/lib/model";
 import { formatMoney } from "@/lib/money";
 import { type BalanceSnapshot, holdings, overview, wholePercents } from "@/lib/overview";
 import type { LocalRow } from "@/lib/sync";
+import { categoryTone } from "@/lib/budgets";
 import { BudgetBar, ProgressLine } from "./BudgetBar";
 import { HeroJar } from "./HeroJar";
 import { Icon } from "./Icon";
@@ -23,10 +24,12 @@ function monthLabel(month: string, locale: string): string {
  * what went out and what is left, then where the spending went, one plain row
  * per category. Figures come from lib/overview.ts.
  */
-export function OverviewScreen({ config, rows, snapshots: given, initialMonth, initialOpen, onTrend }: {
+export function OverviewScreen({ config, rows, snapshots: given, initialMonth, initialOpen, onTrend, onBudgets }: {
   config: Config; rows: LocalRow[]; snapshots?: BalanceSnapshot[]; initialMonth?: string; initialOpen?: string | null;
   /** A category tapped in "Where it went": its trend. */
   onTrend?: (categoryId: string) => void;
+  /** The budget bar tapped: the Budgets screen. */
+  onBudgets?: () => void;
 }) {
   const locale = config.household.locale || "en-CA";
   const currency = config.household.currency;
@@ -90,7 +93,7 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
         </p>
       )}
 
-      <BudgetBar status={view.budget} money={(n) => money(n)} />
+      <BudgetBar status={view.budget} money={(n) => money(n)} onOpen={onBudgets} />
 
       {held && (
         <div className="flex items-center gap-4 px-5 py-3 mt-3 border-y border-line" data-testid="overview-holdings">
@@ -137,7 +140,7 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
                     <div className="t-body truncate">{c?.name ?? "Uncategorized"}</div>
                     <div className="t-secondary text-ink-muted truncate">{context}</div>
                     {row.budget ? (
-                      <ProgressLine fraction={row.budget.fraction} over={row.budget.overMinor > 0} testId="where-budget" />
+                      <ProgressLine status={row.budget} tone={categoryTone(row.budget, c?.fixed)} testId="where-budget" />
                     ) : (
                       <div className="h-1 rounded-full bg-paper-high mt-1.5 overflow-hidden" aria-hidden>
                         <div className="h-full rounded-full" style={{ width: `${Math.round(row.share * 100)}%`, background: categoryColor(c?.color_index ?? 0) }} />

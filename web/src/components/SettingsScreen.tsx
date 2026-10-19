@@ -10,7 +10,7 @@ import { Avatar, Chip, ScreenHeader, Section, SecondaryButton } from "./Pieces";
 import { AccountScreen } from "./AccountScreen";
 import { RulesScreen } from "./RulesScreen";
 
-export function SettingsScreen({ config, households, rows, onConfig, onBulk, onSwitch, onSignOut, onAddHousehold, accountId, onAccount, onOpen }: {
+export function SettingsScreen({ config, households, rows, onConfig, onBulk, onSwitch, onSignOut, onAddHousehold, accountId, onAccount, onOpen, onBudgets }: {
   config: Config;
   households: Membership[];
   rows: LocalRow[];
@@ -23,6 +23,7 @@ export function SettingsScreen({ config, households, rows, onConfig, onBulk, onS
   accountId?: string | null;
   onAccount?: (id: string | null) => void;
   onOpen?: (row: LocalRow) => void;
+  onBudgets?: () => void;
 }) {
   const [rules, setRules] = useState(false);
   const [invite, setInvite] = useState<{ code: string; expires_at: string } | null>(null);
@@ -90,6 +91,15 @@ export function SettingsScreen({ config, households, rows, onConfig, onBulk, onS
         </div>
         <ChevronRight size={20} className="text-ink-muted" />
       </button>
+      {onBudgets && (
+        <button type="button" data-testid="open-budgets" onClick={onBudgets} className="w-full flex items-center justify-between px-5 py-3 text-left yields">
+          <div>
+            <div className="t-body">Budgets and fixed costs</div>
+            <div className="t-secondary text-ink-muted">{config.budgets.filter((b) => b.amount_minor > 0).length ? "A monthly amount per category" : "None set yet"}</div>
+          </div>
+          <ChevronRight size={20} className="text-ink-muted" />
+        </button>
+      )}
       <Section>Accounts</Section>
       {config.accounts.filter((a) => !a.archived).map((a) => (
         <button key={a.id} type="button" data-testid="account-row" onClick={() => openAccount(a.id)} className="w-full px-5 py-2 t-body flex items-center gap-3 text-left yields">
