@@ -9,6 +9,10 @@
  * recurring money in that comes to the most a month, from lib/recurring.ts),
  * its next dates, and the pay period around a day. Nothing uses the pay
  * period for budgets yet.
+ *
+ * A payday after the records' last day but not after today is expected, not
+ * imported yet (most likely paid, the statement not in): it is not the next
+ * payday, which is always the first after today.
  */
 import { monthOf, shiftMonth } from "./ledger";
 import { type Cadence, type Evidence, type RecurringView, stepCadence } from "./recurring";
@@ -42,7 +46,10 @@ export interface Payday {
   typicalMinor: number;
   monthlyMinor: number;
   lastDate: string | null;
+  /** The first payday after today. */
   nextDate: string;
+  /** Paydays after the records' last day, on or before today: expected, not imported yet. */
+  expected: string[];
   confirmed: boolean;
   evidence: Evidence;
   /** How many deposits it was seen in. */
@@ -64,7 +71,7 @@ export function paydays(view: RecurringView): Payday[] {
     .sort((a, b) => Number(b.confirmed) - Number(a.confirmed) || b.monthlyMinor - a.monthlyMinor)
     .map((x) => ({
       key: x.key, name: x.name, cadence: x.cadence, anchorDay: x.anchorDay, days: x.days, typicalMinor: x.typicalMinor, monthlyMinor: x.monthlyMinor,
-      lastDate: x.lastDate, nextDate: x.nextDate, confirmed: x.confirmed, evidence: x.evidence, count: x.seen.length,
+      lastDate: x.lastDate, nextDate: x.nextDate, expected: x.expected, confirmed: x.confirmed, evidence: x.evidence, count: x.seen.length,
     }));
 }
 
@@ -75,9 +82,12 @@ export function payday(view: RecurringView): Payday | null {
 
 const step = (p: Payday, d: string, by: 1 | -1) => stepCadence(p.cadence, d, by, { day: p.anchorDay, days: p.days });
 
+/** Where its calendar is anchored: the last deposit seen, else the next payday. */
+const anchorOf = (p: Payday) => p.lastDate ?? p.nextDate;
+
 /** The next `count` paydays on or after `from`. */
 export function paydaysFrom(p: Payday, from: string, count = 3): string[] {
-  let d = p.lastDate ?? p.nextDate;
+  let d = anchorOf(p);
   for (let i = 0; i < 2000 && d < from; i++) d = step(p, d, 1);
   for (let i = 0; i < 2000 && step(p, d, -1) >= from; i++) d = step(p, d, -1);
   const out: string[] = [];
@@ -88,12 +98,33 @@ export function paydaysFrom(p: Payday, from: string, count = 3): string[] {
   return out;
 }
 
+/** The next `count` paydays after `after` (after today: the next payday and the ones following it). */
+export function paydaysAfter(p: Payday, after: string, count = 3): string[] {
+  const [y, m, d] = after.split("-").map(Number);
+  return paydaysFrom(p, new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10), count);
+}
+
+/** The next payday: the first after today, never one expected but not imported yet. */
+export function nextPayday(p: Payday, today: string): string {
+  return paydaysAfter(p, today, 1)[0];
+}
+
+/** Paydays after the records' last day (through) and on or before today: expected, not imported yet. */
+export function expectedPaydays(p: Payday, through: string, today: string): string[] {
+  const out: string[] = [];
+  for (const d of paydaysAfter(p, through, 400)) {
+    if (d > today) break;
+    out.push(d);
+  }
+  return out;
+}
+
 /**
  * The pay period a day falls in: from the payday on or before it to the day
  * before the next. The seam for a "start budgets on payday" setting.
  */
 export function payPeriodOf(p: Payday, date: string): { from: string; to: string } {
-  let start = p.lastDate ?? p.nextDate;
+  let start = anchorOf(p);
   for (let i = 0; i < 2000 && start > date; i++) start = step(p, start, -1);
   for (let i = 0; i < 2000 && step(p, start, 1) <= date; i++) start = step(p, start, 1);
   const next = step(p, start, 1);

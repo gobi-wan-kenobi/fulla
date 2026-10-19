@@ -29,11 +29,13 @@
  *  4. A price change: at least three occurrences, all but the last steady
  *     (within 2 %), and the last off by more than that. The typical amount
  *     is then the new one.
- *  5. The next date, stepping one cycle from the last occurrence (monthly on
- *     its usual day, the month's last day when shorter), and where that
- *     stands as of the day the records reach (not today: a statement not
- *     imported yet is not a missed payment): upcoming, due (within a few
- *     days of grace), late, or missed (a whole cycle and nothing).
+ *  5. The dates it falls on, stepping one cycle at a time from the last
+ *     occurrence (monthly on its usual day, the month's last day when
+ *     shorter). The first of them, measured to the day the records reach, is
+ *     due (within a few days of grace), late, or missed (a whole cycle and
+ *     nothing). Dates after the records' last day but not after today are
+ *     expected, not imported yet: a statement not imported yet is not a
+ *     missed payment. The next date is the first after today.
  *  6. One occurrence is suggested only when its row or category says it is a
  *     fixed cost; it is then taken to be monthly.
  *
@@ -54,7 +56,12 @@ const RANGE: Record<Cadence, [number, number]> = { weekly: [5, 9], biweekly: [12
 export const GRACE: Record<Cadence, number> = { weekly: 2, biweekly: 3, semimonthly: 3, monthly: 5, yearly: 14 };
 
 export type Evidence = "once" | "few" | "regular" | "confirmed";
-export type RecurringState = "upcoming" | "due" | "late" | "missed";
+/**
+ * Where an item stands. due, late and missed only for a date on or before the
+ * records' last day; expected for one after it but not after today (not
+ * imported yet); upcoming when nothing falls before tomorrow.
+ */
+export type RecurringState = "upcoming" | "expected" | "due" | "late" | "missed";
 
 export interface Seen { date: string; amountMinor: number; txId: string }
 
@@ -74,7 +81,14 @@ export interface RecurringItem {
   /** Oldest first. */
   seen: Seen[];
   lastDate: string | null;
+  /** The first date after today it falls on. */
   nextDate: string;
+  /** The first date after the last occurrence: what due, late and missed are about. */
+  dueDate: string;
+  /** Dates after the records' last day, on or before today: expected, not imported yet. */
+  expected: string[];
+  /** The dates after today in the next two months (nextDate first). */
+  upcoming: string[];
   state: RecurringState;
   /** Days past nextDate (and its grace) as of the records' last day; 0 when upcoming or due. */
   overdueDays: number;
@@ -119,11 +133,33 @@ export function stepCadence(c: Cadence, date: string, by: 1 | -1 = 1, anchor: { 
   }
 }
 
-function stateOf(c: Cadence, next: string, through: string): { state: RecurringState; overdueDays: number } {
-  if (next > through) return { state: "upcoming", overdueDays: 0 };
-  const over = daysBetween(next, through);
-  if (over <= GRACE[c]) return { state: "due", overdueDays: 0 };
-  return { state: over >= CADENCE_DAYS[c] ? "missed" : "late", overdueDays: over };
+type Timing = Pick<RecurringItem, "nextDate" | "dueDate" | "expected" | "upcoming" | "state" | "overdueDays">;
+
+/**
+ * Where an item stands, from the first date after its last occurrence and a
+ * step to the one after: late or missed only as of the records' last day
+ * (through); between that and today, expected; next, the first after today.
+ */
+function timing(c: Cadence, first: string, step: (d: string) => string | null, through: string, today: string): Timing {
+  const end = today < through ? through : today;
+  let state: RecurringState = "upcoming";
+  let overdueDays = 0;
+  if (first <= through) {
+    const over = daysBetween(first, through);
+    if (over <= GRACE[c]) state = "due";
+    else { state = over >= CADENCE_DAYS[c] ? "missed" : "late"; overdueDays = over; }
+  } else if (first <= end) state = "expected";
+  const expected: string[] = [];
+  const upcoming: string[] = [];
+  const horizon = addMonths(end, 2);
+  let d: string | null = first;
+  for (let i = 0; d && i < 400 && (d <= end || (d <= horizon && upcoming.length < 10) || upcoming.length === 0); i++) {
+    if (d > end) upcoming.push(d);
+    else if (d > through) expected.push(d);
+    const n = step(d);
+    d = n && n > d ? n : null;
+  }
+  return { nextDate: upcoming[0] ?? first, dueDate: first, expected, upcoming, state, overdueDays };
 }
 
 /**
@@ -233,7 +269,7 @@ function nameOf(key: string): string {
 }
 
 /** What one merchant's rows say, or null when they do not repeat. */
-export function detect(g: Group, through: string, categories: Category[] = []): RecurringItem | null {
+export function detect(g: Group, through: string, categories: Category[] = [], today: string = through): RecurringItem | null {
   const seen = seenOf(g.rows);
   if (seen.length === 0) return null;
   const latest = [...g.rows].sort((a, b) => (a.date < b.date ? 1 : -1))[0];
@@ -244,7 +280,7 @@ export function detect(g: Group, through: string, categories: Category[] = []): 
     const typical = seen[0].amountMinor;
     const next = stepCadence("monthly", seen[0].date);
     return { ...base, cadence: "monthly", anchorDay: dayOfMonth(seen[0].date), typicalMinor: typical, toleranceMinor: Math.max(1, Math.ceil(typical * 0.05)), varies: false,
-      nextDate: next, ...stateOf("monthly", next, through), skipped: 0, priceChange: null, evidence: "once", monthlyMinor: typical };
+      ...timing("monthly", next, (d) => stepCadence("monthly", d, 1, { day: dayOfMonth(seen[0].date) }), through, today), skipped: 0, priceChange: null, evidence: "once", monthlyMinor: typical };
   }
   const shape = classify(seen.map((s) => s.date));
   if (!shape) return null;
@@ -266,7 +302,7 @@ export function detect(g: Group, through: string, categories: Category[] = []): 
   const regular = seen.length >= 3 && daysBetween(seen[0].date, last) >= 2 * CADENCE_DAYS[shape.cadence] - GRACE[shape.cadence];
   return {
     ...base, cadence: shape.cadence, anchorDay, days: shape.days, typicalMinor: typical, toleranceMinor: tolerance, varies: tolerance > typical * 0.1,
-    nextDate: next, ...stateOf(shape.cadence, next, through), skipped: shape.skipped, priceChange,
+    ...timing(shape.cadence, next, (d) => stepCadence(shape.cadence, d, 1, { day: anchorDay, days: shape.days }), through, today), skipped: shape.skipped, priceChange,
     evidence: regular ? "regular" : "few", monthlyMinor: Math.round(typical * PER_MONTH[shape.cadence]),
   };
 }
@@ -332,7 +368,7 @@ export function cadenceOf(rules: RecurringRule[]): Cadence | null {
 }
 
 /** A confirmed item: the rule(s) of one key, and the rows that look like them. */
-function confirmedItem(key: string, rules: RecurringRule[], g: Group | undefined, through: string): RecurringItem {
+function confirmedItem(key: string, rules: RecurringRule[], g: Group | undefined, through: string, today: string): RecurringItem {
   const r = rules[0];
   const kind = r.template.kind === "income" ? "income" : "expense";
   const ids = new Set(rules.map((x) => x.id));
@@ -354,7 +390,8 @@ function confirmedItem(key: string, rules: RecurringRule[], g: Group | undefined
     key, kind, name: r.name, cadence,
     anchorDay: r.schedule.by_month_day ? monthDay(r) : undefined, days: rules.length === 2 ? [monthDay(rules[0]), monthDay(rules[1])].sort((a, b) => a - b) as [number, number] : undefined,
     typicalMinor: typical, toleranceMinor: tolerance, varies: tolerance > typical * 0.1, seen, lastDate,
-    nextDate: next, ...stateOf(cadence, next, through), skipped: 0, priceChange, evidence: "confirmed", confirmed: true,
+    ...timing(cadence, next, (d) => rules.map((x) => nextOccurrence(x, d)).filter((x): x is string => !!x).sort()[0] ?? null, through, today),
+    skipped: 0, priceChange, evidence: "confirmed", confirmed: true,
     ruleIds: rules.map((x) => x.id), categoryId: r.template.category_id ?? null, latest,
     monthlyMinor: Math.round(cadenceOf(rules) ? typical * perMonth : rules.reduce((n, x) => n + x.template.amount_minor * perMonthOf(x.schedule), 0)),
   };
@@ -387,6 +424,7 @@ export interface RecurringView {
   suggestedMinor: number;
   /** The last day the records reach (never after today): what "late" and "missed" are measured to. */
   through: string;
+  today: string;
 }
 
 /** The household's recurring items: the confirmed ones, then what else repeats, as suggestions (dismissed ones left out). */
@@ -402,21 +440,27 @@ export function recurringView(txs: Transaction[], config: Pick<Config, "recurrin
     if (!k) continue;
     byKey.set(k, [...(byKey.get(k) ?? []), r].sort((a, b) => monthDay(a) - monthDay(b)));
   }
-  const confirmed = [...byKey.entries()].map(([k, rules]) => confirmedItem(k, rules, groups.get(k), through));
+  const confirmed = [...byKey.entries()].map(([k, rules]) => confirmedItem(k, rules, groups.get(k), through, today));
   const skip = new Set([...byKey.keys(), ...dismissed]);
   const suggested = [...groups.values()].filter((g) => !skip.has(g.key))
-    .map((g) => detect(g, through, config.categories)).filter((x): x is RecurringItem => !!x);
+    .map((g) => detect(g, through, config.categories, today)).filter((x): x is RecurringItem => !!x);
   const order = (a: RecurringItem, b: RecurringItem) => b.monthlyMinor - a.monthlyMinor || (a.key < b.key ? -1 : 1);
   confirmed.sort(order);
   suggested.sort(order);
   const out = (xs: RecurringItem[]) => xs.filter((x) => x.kind === "expense").reduce((n, x) => n + x.monthlyMinor, 0);
-  return { confirmed, suggested, committedMinor: out(confirmed), suggestedMinor: out(suggested), through };
+  return { confirmed, suggested, committedMinor: out(confirmed), suggestedMinor: out(suggested), through, today };
 }
 
-/** Confirmed or suggested money out whose next date falls in from..to and is not recorded yet. */
-export function stillToCome(view: RecurringView, from: string, to: string): { items: RecurringItem[]; totalMinor: number; confirmedMinor: number } {
-  const items = [...view.confirmed, ...view.suggested].filter((x) => x.kind === "expense" && x.nextDate >= from && x.nextDate <= to && x.nextDate > view.through);
-  return { items, totalMinor: items.reduce((n, x) => n + x.typicalMinor, 0), confirmedMinor: items.filter((x) => x.confirmed).reduce((n, x) => n + x.typicalMinor, 0) };
+/**
+ * Confirmed or suggested money out still to come in from..to: only dates
+ * after today (one expected but not imported yet has, most likely, gone out
+ * already), each time it falls (a weekly item four or five times a month).
+ */
+export function stillToCome(view: RecurringView, from: string, to: string): { items: RecurringItem[]; count: number; totalMinor: number; confirmedMinor: number } {
+  const times = (x: RecurringItem) => x.upcoming.filter((d) => d > view.today && d >= from && d <= to).length;
+  const items = [...view.confirmed, ...view.suggested].filter((x) => x.kind === "expense" && times(x) > 0);
+  const sum = (xs: RecurringItem[]) => xs.reduce((n, x) => n + times(x) * x.typicalMinor, 0);
+  return { items, count: items.reduce((n, x) => n + times(x), 0), totalMinor: sum(items), confirmedMinor: sum(items.filter((x) => x.confirmed)) };
 }
 
 // ── confirming ───────────────────────────────────────────────────────────────

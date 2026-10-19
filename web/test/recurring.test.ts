@@ -5,9 +5,10 @@
 import { describe, expect, it } from "vitest";
 import { addDays } from "@/lib/dates";
 import { type Account, type Category, type Config, type Member, type RecurringRule, type Transaction, outsideTotals } from "@/lib/model";
-import { payPeriodOf, payday, paydays, paydaysFrom } from "@/lib/period";
+import { expectedPaydays, nextPayday, payPeriodOf, payday, paydays, paydaysAfter, paydaysFrom } from "@/lib/period";
 import { archived, detect, editFor, editProblem, nextOccurrence, recurringGroups, recurringKey, recurringView, rulesFor, stepCadence, stillToCome } from "@/lib/recurring";
 import { category } from "./support";
+import { paydayLines, stateText } from "@/lib/recurringText";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const ANA = id(1);
@@ -63,15 +64,15 @@ describe("detecting what repeats", () => {
 
   it("weekly, every two weeks (same weekday), twice a month (1st and 16th) and yearly", () => {
     const weekly = [0, 7, 14, 21, 28].map((d) => tx(addDays("2030-03-02", d), "expense", 1500, "YOGA STUDIO", null));
-    expect(one(weekly)).toMatchObject({ cadence: "weekly", nextDate: "2030-04-06", monthlyMinor: Math.round((1500 * 52) / 12) });
+    expect(one(weekly)).toMatchObject({ cadence: "weekly", dueDate: "2030-04-06", monthlyMinor: Math.round((1500 * 52) / 12) });
     const fortnight = [0, 14, 28, 42].map((d) => tx(addDays("2030-03-01", d), "income", 210000, "ACME PAYROLL", PAY));
-    expect(one(fortnight)).toMatchObject({ cadence: "biweekly", nextDate: "2030-04-26" });
+    expect(one(fortnight)).toMatchObject({ cadence: "biweekly", dueDate: "2030-04-26" });
     const twice = ["2030-03-01", "2030-03-16", "2030-04-01", "2030-04-16"].map((d) => tx(d, "expense", 27500, "CITY CONDO FEES", RENT));
-    expect(one(twice)).toMatchObject({ cadence: "semimonthly", days: [1, 16], nextDate: "2030-05-01", monthlyMinor: 55000 });
+    expect(one(twice)).toMatchObject({ cadence: "semimonthly", days: [1, 16], dueDate: "2030-05-01", monthlyMinor: 55000 });
     const lastDay = ["2030-01-15", "2030-01-31", "2030-02-15", "2030-02-28", "2030-03-15"].map((d) => tx(d, "income", 180000, "EMPLOYER DEP", PAY));
-    expect(one(lastDay)).toMatchObject({ cadence: "semimonthly", days: [15, 31], nextDate: "2030-03-31" });
+    expect(one(lastDay)).toMatchObject({ cadence: "semimonthly", days: [15, 31], dueDate: "2030-03-31" });
     const yearly = ["2027-05-10", "2028-05-11", "2029-05-10"].map((d) => tx(d, "expense", 12000, "DOMAIN RENEWAL", SUBS));
-    expect(one(yearly)).toMatchObject({ cadence: "yearly", nextDate: "2030-05-10" });
+    expect(one(yearly)).toMatchObject({ cadence: "yearly", dueDate: "2030-05-10" });
   });
 
   it("shopping is not recurring: scattered amounts, or no steady gaps", () => {
@@ -93,16 +94,17 @@ describe("detecting what repeats", () => {
 
   it("late and missed are measured to the records' last day, not to today", () => {
     const rows = months("2030-01-10", 3, (d) => tx(d, "expense", 8000, "GYM", SUBS));
-    expect(one(rows, "2030-04-12")).toMatchObject({ nextDate: "2030-04-10", state: "due" });
+    expect(one(rows, "2030-04-12")).toMatchObject({ dueDate: "2030-04-10", state: "due" });
     expect(one(rows, "2030-04-20")).toMatchObject({ state: "late", overdueDays: 10 });
     expect(one(rows, "2030-05-15")).toMatchObject({ state: "missed" });
     const view = recurringView([...rows, tx("2030-04-01", "expense", 1200, "LUNCH", FOOD)], cfg(), "2030-10-18", OUT);
     expect(view.through).toBe("2030-04-01");
-    expect(view.suggested[0].state).toBe("upcoming");
+    expect(view.suggested[0]).toMatchObject({ state: "expected", dueDate: "2030-04-10", nextDate: "2030-11-10", overdueDays: 0 });
+    expect(view.suggested[0].expected).toEqual(["2030-04-10", "2030-05-10", "2030-06-10", "2030-07-10", "2030-08-10", "2030-09-10", "2030-10-10"]);
   });
 
   it("seen once: suggested only when it is a fixed cost, as monthly, and saying so", () => {
-    expect(one([tx("2030-03-03", "expense", 185000, "LANDLORD", RENT)])).toMatchObject({ cadence: "monthly", evidence: "once", nextDate: "2030-04-03" });
+    expect(one([tx("2030-03-03", "expense", 185000, "LANDLORD", RENT)])).toMatchObject({ cadence: "monthly", evidence: "once", dueDate: "2030-04-03" });
     expect(one([tx("2030-03-03", "expense", 5000, "PIZZA PLACE", FOOD)])).toBeNull();
     expect(one([tx("2030-03-03", "expense", 5000, "MUSIC APP", FOOD, { recurrence: "fixed" })])).toMatchObject({ evidence: "once" });
     expect(one(months("2030-01-03", 2, (d) => tx(d, "expense", 2000, "CLOUD", SUBS)))).toMatchObject({ evidence: "few" });
@@ -207,7 +209,81 @@ describe("payday", () => {
 
   it("one month of history: a single fixed pay deposit is a monthly suggestion; none at all is no payday", () => {
     const once = recurringView([tx("2030-09-14", "income", 546000, "EMPLOYER", PAY, { recurrence: "fixed" })], cfg(), "2030-10-18", OUT);
-    expect(payday(once)).toMatchObject({ cadence: "monthly", evidence: "once", nextDate: "2030-10-14" });
+    expect(payday(once)).toMatchObject({ cadence: "monthly", evidence: "once", expected: ["2030-10-14"], nextDate: "2030-11-14" });
     expect(payday(recurringView([], cfg(), "2030-10-18", OUT))).toBeNull();
+  });
+});
+
+describe("between the records' last day and today: expected, not imported yet", () => {
+  // Records reach Sep 30; today is Oct 18. Nothing after Sep 30 can be late: the statement is not in yet.
+  const fill = tx("2030-09-30", "expense", 1200, "LUNCH", FOOD);
+  const view = (rows: Transaction[], rules: RecurringRule[] = []) => recurringView([...rows, fill], cfg(rules), "2030-10-18", OUT);
+  const item = (v: ReturnType<typeof recurringView>, key: string) => [...v.confirmed, ...v.suggested].find((x) => x.key === key)!;
+
+  it("pay seen once on Sep 14: expected Oct 14 (not imported yet), next payday Nov 14", () => {
+    const v = view([tx("2030-09-14", "income", 512000, "ACME PAYROLL", PAY, { recurrence: "fixed" })]);
+    expect(v.through).toBe("2030-09-30");
+    const p = payday(v)!;
+    expect(p).toMatchObject({ nextDate: "2030-11-14", expected: ["2030-10-14"] });
+    expect(nextPayday(p, "2030-10-18")).toBe("2030-11-14");
+    expect(nextPayday(p, "2030-10-13")).toBe("2030-10-14");
+    expect(nextPayday(p, "2030-10-14")).toBe("2030-11-14");
+    expect(paydaysAfter(p, "2030-11-14", 2)).toEqual(["2030-12-14", "2031-01-14"]);
+    expect(expectedPaydays(p, "2030-09-30", "2030-10-18")).toEqual(["2030-10-14"]);
+    expect(expectedPaydays(p, "2030-10-15", "2030-10-18")).toEqual([]);
+    expect(item(v, "income:acme payroll")).toMatchObject({ state: "expected", dueDate: "2030-10-14", upcoming: ["2030-11-14", "2030-12-14"] });
+    const money = (n: number) => `$${(n / 100).toFixed(2)}`;
+    expect(paydayLines(p, "2030-10-18", "en-CA", money)).toEqual({
+      next: "Next payday Thu, Nov 14", how: "Monthly, the 14th · usually $5120.00 · Acme Payroll",
+      expected: "Expected Oct 14 · not imported yet", then: "Then Dec 14, Jan 14", evidence: "Suggested — needs more months or your OK",
+    });
+    expect(stateText(item(v, "income:acme payroll"), money, (d) => d)).toEqual({ text: "expected 2030-10-14 · not imported yet", tone: "muted" });
+  });
+
+  it("pay every two weeks: every payday since the records end is expected; the next is after today", () => {
+    const v = view([0, 14, 28].map((d) => tx(addDays("2030-09-05", d), "income", 210000, "ACME PAYROLL", PAY)));
+    const p = payday(v)!;
+    expect(p.lastDate).toBe("2030-10-03");
+    // The last deposit is the records' last day here.
+    expect(v.through).toBe("2030-10-03");
+    expect(p).toMatchObject({ expected: ["2030-10-17"], nextDate: "2030-10-31" });
+  });
+
+  it("a monthly bill and a weekly class: expected dates are not late; next is after today", () => {
+    const v = view([
+      tx("2030-08-04", "expense", 1649, "STREAMCO", SUBS), tx("2030-09-04", "expense", 1649, "STREAMCO", SUBS),
+      ...[0, 7, 14, 21].map((d) => tx(addDays("2030-09-06", d), "expense", 1500, "YOGA STUDIO", null)),
+    ]);
+    expect(item(v, "expense:streamco")).toMatchObject({ state: "expected", expected: ["2030-10-04"], nextDate: "2030-11-04", overdueDays: 0 });
+    expect(item(v, "expense:yoga studio")).toMatchObject({ state: "expected", expected: ["2030-10-04", "2030-10-11", "2030-10-18"], nextDate: "2030-10-25" });
+  });
+
+  it("late and missed stay for dates on or before the records' last day, with what came after it expected", () => {
+    const v = view(["2030-06-10", "2030-07-10", "2030-08-10"].map((d) => tx(d, "expense", 8000, "GYM", SUBS)));
+    expect(item(v, "expense:gym")).toMatchObject({ state: "late", dueDate: "2030-09-10", overdueDays: 20, expected: ["2030-10-10"], nextDate: "2030-11-10" });
+    const gone = view(["2030-05-02", "2030-06-02", "2030-07-02"].map((d) => tx(d, "expense", 8000, "GYM", SUBS)));
+    expect(item(gone, "expense:gym")).toMatchObject({ state: "missed", dueDate: "2030-08-02", expected: ["2030-10-02"], nextDate: "2030-11-02" });
+  });
+
+  it("a confirmed rule the same way", () => {
+    const rule: RecurringRule = { id: id(730), name: "Rent", template: { kind: "expense", amount_minor: 185000, note: "LANDLORD", category_id: RENT.id },
+      schedule: { freq: "monthly", interval: 1, by_month_day: 1 }, start_date: "2030-08-01", end_date: null, auto_create: false, active: true, archived: false };
+    const v = view([tx("2030-08-01", "expense", 185000, "LANDLORD", RENT), tx("2030-09-01", "expense", 185000, "LANDLORD", RENT)], [rule]);
+    expect(v.confirmed[0]).toMatchObject({ state: "expected", dueDate: "2030-10-01", expected: ["2030-10-01"], nextDate: "2030-11-01" });
+  });
+
+  it("still to come this month counts only dates after today, each time it falls", () => {
+    const v = view([
+      tx("2030-08-04", "expense", 1649, "STREAMCO", SUBS), tx("2030-09-04", "expense", 1649, "STREAMCO", SUBS),
+      tx("2030-08-28", "expense", 4500, "PHONECO", SUBS), tx("2030-09-28", "expense", 4500, "PHONECO", SUBS),
+      ...[0, 7, 14, 21].map((d) => tx(addDays("2030-09-06", d), "expense", 1500, "YOGA STUDIO", null)),
+    ]);
+    const left = stillToCome(v, "2030-10-18", "2030-10-31");
+    expect(left.items.map((x) => x.key).sort()).toEqual(["expense:phoneco", "expense:yoga studio"]);
+    expect(left.count).toBe(2);
+    expect(left.totalMinor).toBe(4500 + 1500);
+    const nov = stillToCome(v, "2030-11-01", "2030-11-30");
+    expect(nov.count).toBe(1 + 1 + 5);
+    expect(nov.totalMinor).toBe(1649 + 4500 + 5 * 1500);
   });
 });

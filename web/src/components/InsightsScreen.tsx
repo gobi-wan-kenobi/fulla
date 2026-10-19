@@ -9,11 +9,12 @@ import { counted, monthOf, shiftMonth, today as todayOf } from "@/lib/ledger";
 import { outsideTotals, type Config } from "@/lib/model";
 import { formatMoney, requireCurrency } from "@/lib/money";
 import { wholePercents } from "@/lib/overview";
-import { payday, paydays, paydaysFrom, periodBounds } from "@/lib/period";
+import { nextPayday, payday, paydays, periodBounds } from "@/lib/period";
 import { type RecurringView, recurringView, stillToCome } from "@/lib/recurring";
 import type { LocalRow } from "@/lib/sync";
 import { EmptyState, ScreenHeader, Section, categoryColor } from "./Pieces";
-import { RecurringSection, cadenceText, dayLabel, evidenceText } from "./RecurringSection";
+import { RecurringSection } from "./RecurringSection";
+import { cadenceText, dayLabel, paydayLines } from "@/lib/recurringText";
 
 function monthLabel(month: string, locale: string, short = false): string {
   const [y, m] = month.split("-").map(Number);
@@ -98,6 +99,7 @@ export function InsightsScreen({ config, rows, onConfig, onClose, initialMonth, 
   const rec: RecurringView = useMemo(() => recurringView(txs, config, today, outside, dismissed), [txs, config, today, outside, dismissed]);
   const pay = payday(rec);
   const otherPay = paydays(rec).slice(1);
+  const payText = pay ? paydayLines(pay, today, locale, (n) => money(n)) : null;
   const bounds = periodBounds(current);
   const toCome = stillToCome(rec, today, bounds.to);
   const category = (id: string | null) => (id ? config.categories.find((c) => c.id === id) : undefined);
@@ -123,11 +125,12 @@ export function InsightsScreen({ config, rows, onConfig, onClose, initialMonth, 
           <div className="flex items-center gap-2 t-label text-ink-muted"><CalendarClock size={16} aria-hidden /> Payday</div>
           {pay ? (
             <>
-              <div className="t-title mt-1" data-testid="payday-next">Next payday {dayLabel(paydaysFrom(pay, today, 1)[0], locale, true)}</div>
-              <div className="t-secondary text-ink-muted mt-0.5">{cadenceText({ ...pay, nextDate: paydaysFrom(pay, today, 1)[0] }, locale)} · usually <span className="text-money-in">{money(pay.typicalMinor)}</span> · {pay.name}</div>
-              <div className="t-label text-ink-muted mt-1">Then {paydaysFrom(pay, today, 3).slice(1).map((d) => dayLabel(d, locale)).join(", ")}</div>
-              {!pay.confirmed && <div className="t-label text-warning mt-2" data-testid="payday-evidence">{evidenceText(pay.evidence, pay.count)}</div>}
-              {otherPay.length > 0 && <div className="t-label text-ink-muted mt-1">Also: {otherPay.map((p) => `${p.name} ${dayLabel(paydaysFrom(p, today, 1)[0], locale)}`).join(", ")}</div>}
+              <div className="t-title mt-1" data-testid="payday-next">{payText!.next}</div>
+              <div className="t-secondary text-ink-muted mt-0.5">{cadenceText({ ...pay, nextDate: nextPayday(pay, today) }, locale)} · usually <span className="text-money-in">{money(pay.typicalMinor)}</span> · {pay.name}</div>
+              {payText!.expected && <div className="t-secondary mt-1" data-testid="payday-expected">{payText!.expected}</div>}
+              <div className="t-label text-ink-muted mt-1">{payText!.then}</div>
+              {payText!.evidence && <div className="t-label text-warning mt-2" data-testid="payday-evidence">{payText!.evidence}</div>}
+              {otherPay.length > 0 && <div className="t-label text-ink-muted mt-1">Also: {otherPay.map((p) => `${p.name} ${dayLabel(nextPayday(p, today), locale)}`).join(", ")}</div>}
             </>
           ) : (
             <p className="t-secondary text-ink-muted mt-1">No pay seen repeating yet. Once two deposits of your pay are recorded (or one marked fixed), the next payday shows here.</p>
@@ -169,7 +172,7 @@ export function InsightsScreen({ config, rows, onConfig, onClose, initialMonth, 
         )}
         {month === current && toCome.items.length > 0 && (
           <div className="flex items-baseline justify-between mt-1">
-            <div className="t-secondary text-ink-muted">Still to come before {dayLabel(bounds.to, locale)} ({toCome.items.length})</div>
+            <div className="t-secondary text-ink-muted">Still to come after today, to {dayLabel(bounds.to, locale)} ({toCome.count})</div>
             <div className="t-secondary text-ink-muted" data-testid="to-come-total">{money(toCome.totalMinor)}</div>
           </div>
         )}

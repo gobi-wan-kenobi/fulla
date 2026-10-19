@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 "use client";
+import { cadenceText, dayLabel, evidenceText, stateText } from "@/lib/recurringText";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { randomId } from "@/lib/ids";
@@ -8,45 +9,9 @@ import { formatMoney, parseTyped, requireCurrency } from "@/lib/money";
 import { type Cadence, CADENCES, type RecurringEdit, type RecurringItem, type RecurringView, archived, editFor, editProblem, rulesFor } from "@/lib/recurring";
 import { Chip, PrimaryButton, Section, SecondaryButton, inputClass } from "./Pieces";
 
+export { cadenceText, dayLabel, evidenceText };
+
 const CADENCE_LABEL: Record<Cadence, string> = { weekly: "Weekly", biweekly: "Every 2 weeks", semimonthly: "Twice a month", monthly: "Monthly", yearly: "Yearly" };
-
-function ordinal(n: number): string {
-  if (n >= 31) return "last day";
-  const s = n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th";
-  return `${n}${s}`;
-}
-
-export function dayLabel(date: string, locale: string, weekday = false): string {
-  const [y, m, d] = date.split("-").map(Number);
-  return new Intl.DateTimeFormat(locale, { ...(weekday ? { weekday: "short" } : {}), day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
-}
-
-export function cadenceText(x: Pick<RecurringItem, "cadence" | "anchorDay" | "days" | "nextDate">, locale: string): string {
-  const [y, m, d] = x.nextDate.split("-").map(Number);
-  const wd = new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
-  switch (x.cadence) {
-    case "weekly": return `Weekly, ${wd}s`;
-    case "biweekly": return `Every 2 weeks, ${wd}s`;
-    case "semimonthly": return x.days ? `Twice a month, the ${ordinal(x.days[0])} and ${ordinal(x.days[1])}` : "Twice a month";
-    case "monthly": return `Monthly, the ${ordinal(x.anchorDay ?? d)}`;
-    case "yearly": return `Yearly, ${dayLabel(x.nextDate, locale)}`;
-  }
-}
-
-/** What to say about where an item stands: late, missed, a new price. */
-function stateText(x: RecurringItem, money: (n: number) => string, day: (d: string) => string): { text: string; tone: "warning" | "danger" | "muted" } | null {
-  if (x.state === "missed") return { text: `missed: nothing since ${x.lastDate ? day(x.lastDate) : "it started"}`, tone: "danger" };
-  if (x.state === "late") return { text: `late by ${x.overdueDays} day${x.overdueDays === 1 ? "" : "s"}`, tone: "warning" };
-  if (x.priceChange) return { text: `price ${x.priceChange.toMinor > x.priceChange.fromMinor ? "up" : "down"} from ${money(x.priceChange.fromMinor)}`, tone: "warning" };
-  if (x.state === "due") return { text: "due now", tone: "muted" };
-  return null;
-}
-
-export function evidenceText(evidence: RecurringItem["evidence"], count: number): string {
-  if (evidence === "confirmed") return "";
-  if (evidence === "regular") return `Suggested — seen ${count} times`;
-  return "Suggested — needs more months or your OK";
-}
 
 /**
  * Recurring items, as the Android Settings › Recurring list and Insights'
