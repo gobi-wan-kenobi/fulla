@@ -1919,6 +1919,18 @@ test('a statement balance is saved per account and day, replaced on the same day
   rpcFails(ctx.db, mallory, 'fulla_balance_snapshot_save', { p_household_id: ctx.hh, p_snapshot: { account_id: main, as_of: '2030-01-31', balance_minor: 1 } });
 });
 
+test('an account can be left out of net worth; a save without the key keeps it (0032)', (ctx) => {
+  const id = uuid();
+  const save = (a) => rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id, name: 'Kid jar', type: 'other', ...a } }).accounts.find((x) => x.id === id);
+  assert.equal(save({}).exclude_from_net_worth, false, 'counted unless said');
+  assert.equal(save({ exclude_from_net_worth: true }).exclude_from_net_worth, true);
+  assert.equal(save({ name: 'Kid jar 2' }).exclude_from_net_worth, true, 'an older client leaves it as it is');
+  assert.equal(rpc(ctx.db, ctx.alice, 'fulla_config_get', { p_household_id: ctx.hh }).accounts.find((x) => x.id === id).exclude_from_net_worth, true);
+  assert.equal(save({ exclude_from_net_worth: false }).exclude_from_net_worth, false);
+  const carol = join(ctx, 'Carol');
+  expectError(ctx.db, carol.user, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id, name: 'Kid jar', type: 'other', exclude_from_net_worth: true } }, 'forbidden_role', 403);
+});
+
 test('what the Net worth screen reads: the statements of every account, oldest first, for any member', (ctx) => {
   const carol = join(ctx, 'Carol');
   const add = (a) => rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id: uuid(), ...a } }).accounts.find((x) => x.name === a.name).id;

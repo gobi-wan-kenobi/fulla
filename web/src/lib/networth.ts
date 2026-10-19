@@ -13,7 +13,8 @@
  * investment account with no statement yet, a child's cash, a stand-in from an
  * import) is listed as missing and left out of the total: its sum of flows is
  * not what it holds. One with nothing at all is an unused stand-in and is not
- * listed. A figure whose latest statement is older than STALE_DAYS is counted
+ * listed. An account marked exclude_from_net_worth (a child's) is left out
+ * completely: not listed, not counted, not in any history point. A figure whose latest statement is older than STALE_DAYS is counted
  * but flagged.
  *
  * History: a point at the end of each month (today for this one), the sum of
@@ -117,6 +118,7 @@ function monthEnds(first: string, asOf: string): string[] {
 export function netWorth(config: Config, txs: Transaction[], snapshots: BalanceSnapshot[], asOf: string): NetWorth {
   const active = txs.filter((t) => t.status === "active");
   const view = balancesView(config, active, snapshots, asOf);
+  view.accounts = view.accounts.filter((l) => !l.account.exclude_from_net_worth);
   const toLine = (l: AccountLine): NetWorthLine | null => {
     const a = l.account;
     const start = startOf(a, snapshots, asOf);
@@ -139,7 +141,7 @@ export function netWorth(config: Config, txs: Transaction[], snapshots: BalanceS
   const debtsMinor = counted.filter((l) => l.group === "debt").reduce((n, l) => n + l.balanceMinor, 0);
 
   // History: each month end, the accounts known by then.
-  const open = config.accounts.filter((a) => !a.archived);
+  const open = config.accounts.filter((a) => !a.archived && !a.exclude_from_net_worth);
   const starts = open.map((a) => startOf(a, snapshots, asOf)?.date).filter((d): d is string => !!d).sort();
   const firstSnap = snapshots.filter((s) => open.some((a) => a.id === s.account_id) && s.as_of <= asOf).map((s) => s.as_of).sort()[0];
   const first = [starts[0], firstSnap].filter(Boolean).sort()[0];

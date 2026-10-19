@@ -86,6 +86,21 @@ describe("net worth", () => {
     expect(none.missing.map((l) => l.account.name)).toEqual(["Chequing"]);
   });
 
+  it("an account left out of net worth (a child's) is gone completely: not listed, not counted, not in any count", () => {
+    const kidOut = { ...KID, exclude_from_net_worth: true };
+    const unusedKid = acct(20, "Other kid's jar", "other", { exclude_from_net_worth: true });
+    const withKid = { ...config, accounts: accounts.map((a) => (a.id === KID.id ? kidOut : a)).concat(unusedKid, { ...acct(21, "Kid savings", "savings", { exclude_from_net_worth: true }) }) } as Config;
+    const out = netWorth(withKid, txs, [...snapshots, snap(acct(21, "", "savings"), "2030-09-30", 80000)], "2030-10-18");
+    expect(out.lines.map((l) => l.account.name)).not.toContain("Kid's jar");
+    expect(out.lines.map((l) => l.account.name)).not.toContain("Kid savings");
+    expect(out.missing.map((l) => l.account.name)).toEqual(["Family RESP"]);
+    expect(out.unused.map((a) => a.name)).toEqual(["Main account"]);
+    const cash = out.groups.find((g) => g.group === "cash")!;
+    expect([cash.lines.filter((l) => l.counted).length, cash.lines.length]).toEqual([2, 2]);
+    expect(out.totalMinor).toBe(nw.totalMinor);
+    expect(out.history).toEqual(nw.history);
+  });
+
   it("groups: cards are debt, investment accounts investments, the rest cash", () => {
     expect([CHQ, SAV, TFSA, CARD, KID].map(groupOf)).toEqual(["cash", "cash", "investments", "debt", "cash"]);
   });

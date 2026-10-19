@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 "use client";
 import { ChevronLeft } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { api } from "@/lib/api";
+import { canManage } from "@/lib/rules";
 import { accountMonths, accountRows, monthOf, signedAmount } from "@/lib/ledger";
 import { ACCOUNT_TYPE_ICONS, accountTypeLabel, type Account, type Config } from "@/lib/model";
 import { formatMoney } from "@/lib/money";
@@ -24,13 +26,29 @@ function dayLabel(date: string, locale: string): string {
  * on it, then its transactions by month. An investment account's fees and
  * income are here, not in the household's figures.
  */
-export function AccountScreen({ config, account, rows, onOpen, onClose }: {
+export function AccountScreen({ config, account, rows, onOpen, onClose, onConfig }: {
   config: Config;
   account: Account;
   rows: LocalRow[];
   onOpen?: (row: LocalRow) => void;
   onClose: () => void;
+  /** Given, an admin can leave the account out of net worth here. */
+  onConfig?: (c: Config) => void;
 }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const excluded = !!account.exclude_from_net_worth;
+  const toggle = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      onConfig!(await api.accountUpsert(config.household.id, { ...account, exclude_from_net_worth: !excluded }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
   const locale = config.household.locale || "en-CA";
   const currency = config.household.currency;
   const money = (n: number, signed = false) => formatMoney(n, currency, locale, signed);
@@ -54,6 +72,16 @@ export function AccountScreen({ config, account, rows, onOpen, onClose }: {
         <p className="t-secondary text-ink-muted px-5 pt-2" data-testid="account-outside">
           Fees and income here stay in the account: they change its value, not the household&apos;s spending or income.
         </p>
+      )}
+      {onConfig && canManage(config) && (
+        <label className="mx-5 mt-3 flex items-center gap-3 rounded-2xl bg-paper-high px-4 py-3" data-testid="account-networth">
+          <div className="flex-1 min-w-0">
+            <div className="t-body">Count in net worth</div>
+            <div className="t-secondary text-ink-muted">{excluded ? "Left out completely, as a child's account" : "Turn off for an account that is not the household's own, such as a child's"}</div>
+            {error && <div className="t-secondary text-danger">{error}</div>}
+          </div>
+          <input type="checkbox" className="h-5 w-5 accent-[var(--highlight)]" checked={!excluded} disabled={busy} onChange={toggle} data-testid="account-networth-toggle" />
+        </label>
       )}
       {months.length === 0 ? (
         <EmptyState title="Nothing on this account yet" text="What you add or import on it shows up here." />

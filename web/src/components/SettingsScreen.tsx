@@ -39,7 +39,7 @@ export function SettingsScreen({ config, households, rows, onConfig, onBulk, onS
   const shown = accountId !== undefined ? accountId : ownAccount;
   const openAccount = onAccount ?? setOwnAccount;
   const page = shown ? config.accounts.find((a) => a.id === shown) : undefined;
-  if (page) return <AccountScreen config={config} account={page} rows={rows} onOpen={onOpen} onClose={() => openAccount(null)} />;
+  if (page) return <AccountScreen config={config} account={page} rows={rows} onOpen={onOpen} onConfig={onConfig} onClose={() => openAccount(null)} />;
   if (rules) return <RulesScreen config={config} rows={rows} onConfig={onConfig} onBulk={onBulk} onClose={() => setRules(false)} />;
 
   return (

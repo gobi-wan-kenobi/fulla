@@ -76,11 +76,11 @@ export function Main(props: {
         ) : insights ? (
           <InsightsScreen config={config} rows={household.rows} onConfig={household.setConfig} onClose={() => setInsights(false)} />
         ) : balances && balanceAccount && config.accounts.some((a) => a.id === balanceAccount) ? (
-          <AccountScreen config={config} account={config.accounts.find((a) => a.id === balanceAccount)!} rows={household.rows} onOpen={setEditing} onClose={() => setBalanceAccount(null)} />
+          <AccountScreen config={config} account={config.accounts.find((a) => a.id === balanceAccount)!} rows={household.rows} onOpen={setEditing} onConfig={household.setConfig} onClose={() => setBalanceAccount(null)} />
         ) : balances ? (
           <BalancesScreen config={config} rows={household.rows} onSave={(tx) => household.saveTransaction(tx)} onAccount={setBalanceAccount} onClose={() => setBalances(false)} />
         ) : worth && worthAccount && config.accounts.some((a) => a.id === worthAccount) ? (
-          <AccountScreen config={config} account={config.accounts.find((a) => a.id === worthAccount)!} rows={household.rows} onOpen={setEditing} onClose={() => setWorthAccount(null)} />
+          <AccountScreen config={config} account={config.accounts.find((a) => a.id === worthAccount)!} rows={household.rows} onOpen={setEditing} onConfig={household.setConfig} onClose={() => setWorthAccount(null)} />
         ) : worth ? (
           <NetWorthScreen config={config} rows={household.rows} onAccount={setWorthAccount} onBalances={() => setBalances(true)} onClose={() => setWorth(false)} />
         ) : budgets ? (
