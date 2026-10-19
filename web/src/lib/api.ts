@@ -6,7 +6,7 @@
  * exposes the public.fulla_* functions.
  */
 import type { ModelAnswer, ModelItem } from "./categorizer";
-import type { Account, Budget, CategorizationRule, Category, Config, SavedImportProfile } from "./model";
+import type { Account, Budget, CategorizationRule, Category, Config, RecurringRule, SavedImportProfile } from "./model";
 import type { Mutation, PullPage, PushResult } from "./sync";
 import { supabase } from "./supabase";
 
@@ -75,6 +75,13 @@ export const api = {
   budgetUpsert: (householdId: string, budget: Budget) => call<Config>("fulla_budget_upsert", { p_household_id: householdId, p_budget: budget }),
   /** Every category's limit of one month (its own or the default) as the other month's own; limits it already has stay. */
   budgetCopy: (householdId: string, from: string, to: string) => call<Config>("fulla_budget_copy", { p_household_id: householdId, p_from_period: from, p_to_period: to }),
+  /** A recurring item (admin): a confirmed suggestion, an edit, or one archived. Returns the config. Never auto_create from the web. */
+  recurringUpsert: (householdId: string, rule: RecurringRule) => call<Config>("fulla_recurring_upsert", { p_household_id: householdId, p_rule: rule }),
+  /** The suggestion keys the household dismissed (0031). */
+  recurringDismissals: (householdId: string) => call<string[]>("fulla_recurring_dismissals", { p_household_id: householdId }),
+  /** Dismisses a suggestion, or offers it again with dismissed false (admin). Returns the dismissed keys. */
+  recurringDismiss: (householdId: string, key: string, dismissed = true) =>
+    call<string[]>("fulla_recurring_dismiss", { p_household_id: householdId, p_key: key, p_dismissed: dismissed }),
   ruleUpsert: (householdId: string, rule: CategorizationRule) => call<Config>("fulla_rule_upsert", { p_household_id: householdId, p_rule: rule }),
   importProfileUpsert: (householdId: string, profile: SavedImportProfile) =>
     call<Config>("fulla_import_profile_upsert", { p_household_id: householdId, p_profile: profile }),

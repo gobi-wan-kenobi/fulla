@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 "use client";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Landmark } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Landmark, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { monthOf, shiftMonth, today } from "@/lib/ledger";
@@ -24,7 +24,7 @@ function monthLabel(month: string, locale: string): string {
  * what went out and what is left, then where the spending went, one plain row
  * per category. Figures come from lib/overview.ts.
  */
-export function OverviewScreen({ config, rows, snapshots: given, initialMonth, initialOpen, onTrend, onBudgets, onBalances }: {
+export function OverviewScreen({ config, rows, snapshots: given, initialMonth, initialOpen, onTrend, onBudgets, onBalances, onInsights }: {
   config: Config; rows: LocalRow[]; snapshots?: BalanceSnapshot[]; initialMonth?: string; initialOpen?: string | null;
   /** A category tapped in "Where it went": its trend. */
   onTrend?: (categoryId: string) => void;
@@ -32,6 +32,8 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
   onBudgets?: () => void;
   /** What the accounts hold tapped: the Balances screen. */
   onBalances?: () => void;
+  /** The Insights screen: payday, what repeats, the month in figures. */
+  onInsights?: () => void;
 }) {
   const locale = config.household.locale || "en-CA";
   const currency = config.household.currency;
@@ -118,6 +120,17 @@ export function OverviewScreen({ config, rows, snapshots: given, initialMonth, i
           ? <button type="button" onClick={onBalances} className={`${cls} yields`} data-testid="overview-holdings">{inner}</button>
           : <div className={cls} data-testid="overview-holdings">{inner}</div>;
       })()}
+
+      {onInsights && (
+        <button type="button" onClick={onInsights} data-testid="open-insights" className="w-full flex items-center gap-4 px-5 py-3 border-b border-line text-left yields">
+          <Sparkles size={22} className="text-ink-muted shrink-0" aria-hidden />
+          <div className="flex-1 min-w-0">
+            <div className="t-body">Insights</div>
+            <div className="t-secondary text-ink-muted">Payday, what repeats, the month in figures</div>
+          </div>
+          <ChevronRight size={18} className="text-ink-muted shrink-0" />
+        </button>
+      )}
 
       {nothing ? (
         <EmptyState title="Nothing this month yet" text="What you add or import shows up here: what came in, what went out, and where it went." />

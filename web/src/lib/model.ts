@@ -150,6 +150,30 @@ export interface Trip {
   in_category_budgets?: boolean;
 }
 
+/** When a recurring item falls due (fulla.validate_schedule): weekly on ISO weekdays every `interval` weeks, monthly on a day, yearly on a day of a month. */
+export interface Schedule {
+  freq: "daily" | "weekly" | "monthly" | "yearly";
+  interval?: number;
+  by_weekday?: number[];
+  by_month_day?: number;
+  by_month?: number;
+  by_months?: number[] | null;
+}
+
+/** A recurring item (fulla.recurring_rules): a transaction without id, date or status, and when it falls due. */
+export interface RecurringRule {
+  id: string;
+  name: string;
+  template: Partial<Transaction> & { kind: TransactionKind; amount_minor: number };
+  schedule: Schedule;
+  start_date: string;
+  end_date?: string | null;
+  /** The phones write each occurrence by themselves; the web never sets it. */
+  auto_create: boolean;
+  active: boolean;
+  archived?: boolean;
+}
+
 export interface CategorizationRule {
   id: string;
   pattern: string;
@@ -177,7 +201,7 @@ export interface Config {
   categories: Category[];
   custom_fields: unknown[];
   budgets: Budget[];
-  recurring_rules: unknown[];
+  recurring_rules: RecurringRule[];
   categorization_rules: CategorizationRule[];
   import_profiles: SavedImportProfile[];
   trips?: Trip[];

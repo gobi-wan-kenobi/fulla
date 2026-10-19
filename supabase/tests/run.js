@@ -234,6 +234,8 @@ test('a stranger gets not_member from every function that takes a household', (c
     ['fulla_budget_upsert', { p_household_id: hh, p_budget: {} }],
     ['fulla_budget_copy', { p_household_id: hh, p_from_period: '2030-01', p_to_period: '2030-02' }],
     ['fulla_recurring_upsert', { p_household_id: hh, p_rule: {} }],
+    ['fulla_recurring_dismissals', { p_household_id: hh }],
+    ['fulla_recurring_dismiss', { p_household_id: hh, p_key: 'expense:x' }],
     ['fulla_rule_upsert', { p_household_id: hh, p_rule: {} }],
     ['fulla_import_profile_upsert', { p_household_id: hh, p_profile: {} }],
     ['fulla_trip_upsert', { p_household_id: hh, p_trip: {} }],
@@ -485,6 +487,7 @@ test('a member cannot change the structure; an admin can; neither can do what on
     ['fulla_budget_upsert', { p_household_id: hh, p_budget: { id: uuid(), category_id: ctx.cat('Groceries'), amount_minor: 100 } }],
     ['fulla_budget_copy', { p_household_id: hh, p_from_period: '2030-01', p_to_period: '2030-02' }],
     ['fulla_recurring_upsert', { p_household_id: hh, p_rule: {} }],
+    ['fulla_recurring_dismiss', { p_household_id: hh, p_key: 'expense:x' }],
     ['fulla_rule_upsert', { p_household_id: hh, p_rule: {} }],
     ['fulla_member_set_role', { p_household_id: hh, p_member_id: bob.member, p_role: 'member' }],
     ['fulla_owner_transfer', { p_household_id: hh, p_member_id: bob.member }],
@@ -725,6 +728,51 @@ test('a recurring item can be archived, and it comes back archived', (ctx) => {
   assert.equal(archived.archived, true);
   assert.equal(archived.active, false);
   assert.equal(save({ ...rule, active: true, archived: false }).recurring_rules.find((r) => r.id === rule.id).archived, false, 'and it can be brought back');
+});
+
+test('a dismissed suggestion is remembered for the household; members read it, admins change it', (ctx) => {
+  const bob = join(ctx, 'Bob');
+  const dismiss = (key, dismissed = true) => rpc(ctx.db, ctx.alice, 'fulla_recurring_dismiss', { p_household_id: ctx.hh, p_key: key, p_dismissed: dismissed });
+  assert.deepEqual(rpc(ctx.db, bob.user, 'fulla_recurring_dismissals', { p_household_id: ctx.hh }), []);
+  assert.deepEqual(dismiss('expense:streamco'), ['expense:streamco']);
+  assert.deepEqual(dismiss('  income:acme payroll '), ['expense:streamco', 'income:acme payroll']);
+  assert.deepEqual(dismiss('expense:streamco'), ['expense:streamco', 'income:acme payroll'], 'twice is once');
+  assert.deepEqual(dismiss('expense:streamco', false), ['income:acme payroll'], 'and it can be offered again');
+  assert.deepEqual(rpc(ctx.db, bob.user, 'fulla_recurring_dismissals', { p_household_id: ctx.hh }), ['income:acme payroll']);
+  expectError(ctx.db, bob.user, 'fulla_recurring_dismiss', { p_household_id: ctx.hh, p_key: 'expense:gym' }, 'forbidden_role', 403);
+  expectError(ctx.db, ctx.alice, 'fulla_recurring_dismiss', { p_household_id: ctx.hh, p_key: ' ' }, 'validation_failed');
+  expectError(ctx.db, ctx.alice, 'fulla_recurring_dismiss', { p_household_id: ctx.hh, p_key: 'x'.repeat(121) }, 'validation_failed');
+  assert.equal(ctx.db.as(ctx.alice, 'select count(*) from fulla.recurring_dismissals;', { expectFailure: true }).ok, false, 'only through the functions');
+  assert.equal(ctx.db.admin('delete from fulla.recurring_dismissals;', { expectFailure: true }).ok, false, 'never deleted, only undismissed');
+  ctx.db.admin(`select fulla.erase_household(${h.literal(ctx.hh)});`);
+  assert.equal(ctx.db.admin('select count(*) from fulla.recurring_dismissals;').out, '0', 'and gone with the household');
+});
+
+test('what the web saves when a suggestion is confirmed: tracked rules only, no rows made', (ctx) => {
+  const bob = join(ctx, 'Bob');
+  const both = [ctx.aliceMember, bob.member];
+  const template = { kind: 'expense', amount_minor: 1649, category_id: ctx.cat('Housing'), account_id: null, paid_by_member_id: ctx.aliceMember,
+                     split: { mode: 'equal', members: both }, recurrence: 'fixed', note: 'STREAMCO', tags: [], extras: {} };
+  const base = { name: 'Streamco', template, auto_create: false, active: true, archived: false, end_date: null };
+  const rules = [
+    { ...base, id: uuid(), start_date: '2030-05-15', schedule: { freq: 'monthly', interval: 1, by_month_day: 15 } },
+    { ...base, id: uuid(), name: 'Yoga', start_date: '2030-05-03', schedule: { freq: 'weekly', interval: 2, by_weekday: [5] } },
+    { ...base, id: uuid(), name: 'Pay', start_date: '2030-05-15', schedule: { freq: 'monthly', interval: 1, by_month_day: 15 },
+      template: { kind: 'income', amount_minor: 180000, category_id: ctx.cat('Salary'), paid_by_member_id: null, split: null, recurrence: 'fixed', note: 'EMPLOYER DEP' } },
+    { ...base, id: uuid(), name: 'Pay', start_date: '2030-05-31', schedule: { freq: 'monthly', interval: 1, by_month_day: -1 },
+      template: { kind: 'income', amount_minor: 180000, category_id: ctx.cat('Salary'), paid_by_member_id: null, split: null, recurrence: 'fixed', note: 'EMPLOYER DEP' } },
+    { ...base, id: uuid(), name: 'Domain', start_date: '2031-05-10', schedule: { freq: 'yearly', interval: 1, by_month_day: 10, by_month: 5 } },
+  ];
+  let cfg;
+  for (const r of rules) cfg = rpc(ctx.db, ctx.alice, 'fulla_recurring_upsert', { p_household_id: ctx.hh, p_rule: r });
+  assert.equal(cfg.recurring_rules.length, 5);
+  for (const r of cfg.recurring_rules) assert.equal(r.auto_create, false);
+  assert.deepEqual(cfg.recurring_rules.find((r) => r.id === rules[1].id).schedule, { freq: 'weekly', interval: 2, by_weekday: [5] });
+  const rows = ctx.db.admin(`select count(*) from fulla.transactions where household_id = ${h.literal(ctx.hh)};`).out;
+  assert.equal(rows, '0', 'a confirmation never makes a transaction');
+  expectError(ctx.db, bob.user, 'fulla_recurring_upsert', { p_household_id: ctx.hh, p_rule: { ...rules[0], id: uuid() } }, 'forbidden_role', 403);
+  // Two people and no split is refused, as for a transaction.
+  expectError(ctx.db, ctx.alice, 'fulla_recurring_upsert', { p_household_id: ctx.hh, p_rule: { ...rules[0], id: uuid(), template: { ...template, split: null } } }, 'validation_failed');
 });
 
 test('categorisation rules must do something valid', (ctx) => {
