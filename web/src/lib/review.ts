@@ -12,17 +12,23 @@
  *    statement of its own (a child's cash jar, a wallet). A household rule
  *    puts it on ("When a note contains …, it is a transfer to that account,
  *    no other statement"), so the transfer is never left unmatched.
+ *  - SUGGEST_TAG_PREFIX + 21 hex: on a line in review, the category the
+ *    categorizer would have chosen had it been sure (21 hex digits of a hash
+ *    of the category's id: a tag is at most 30 characters). Review shows it as
+ *    the suggestion; deciding clears it.
  *  - LEG_TAG_PREFIX + 16 hex: the statement line on the other account that a
  *    transfer was matched with, so importing that statement again adds nothing.
  *
  * The web app does not show tags; these are its bookkeeping.
  */
+import { sha256Hex } from "./ids";
 import type { Transaction } from "./model";
 
 export const REVIEW_TAG = "fulla:review";
 export const UNMATCHED_TAG = "fulla:unmatched-transfer";
 export const LEG_TAG_PREFIX = "fulla:leg:";
 export const NO_STATEMENT_TAG = "fulla:no-statement";
+export const SUGGEST_TAG_PREFIX = "fulla:sg:";
 
 export function hasTag(t: Pick<Transaction, "tags">, tag: string): boolean {
   return (t.tags ?? []).includes(tag);
@@ -42,6 +48,24 @@ export function legTag(fingerprint: string): string {
 
 export function legTags(t: Pick<Transaction, "tags">): string[] {
   return (t.tags ?? []).filter((x) => x.startsWith(LEG_TAG_PREFIX));
+}
+
+/** The tag naming a suggested category (see SUGGEST_TAG_PREFIX). */
+export function suggestionTag(categoryId: string): string {
+  return SUGGEST_TAG_PREFIX + sha256Hex(categoryId.toLowerCase()).slice(0, 21);
+}
+
+/** The row with its suggestion replaced (or removed, for null). */
+export function withSuggestion<T extends Transaction>(t: T, categoryId: string | null): T {
+  const rest = (t.tags ?? []).filter((x) => !x.startsWith(SUGGEST_TAG_PREFIX));
+  return { ...t, tags: categoryId ? [...rest, suggestionTag(categoryId)] : rest };
+}
+
+/** The id of the category a row's suggestion tag names, among ids; null without one. */
+export function suggestedId(t: Pick<Transaction, "tags">, ids: string[]): string | null {
+  const tag = (t.tags ?? []).find((x) => x.startsWith(SUGGEST_TAG_PREFIX));
+  if (!tag) return null;
+  return ids.find((id) => suggestionTag(id) === tag) ?? null;
 }
 
 /** Tags a person sees as their own (everything but this bookkeeping). */

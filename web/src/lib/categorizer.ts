@@ -217,7 +217,35 @@ export interface ModelTransfer {
 }
 
 /**
- * When the model's answer means a transfer rather than spending: its
+ * What Fulla does with a model's answer. A model never makes a transfer: a
+ * line becomes one only when it is matched with the other account's line, a
+ * person says so, or one of the household's own rules does. So an answer that
+ * means a transfer (modelTransfer) files nothing: the line goes to review with
+ * no suggestion. An unsure answer (review) files nothing either, but its
+ * category, when it is a real one, is kept as the suggestion review shows.
+ */
+export interface ModelOutcome {
+  /** The category to file the line in, or null (it stays in Other). */
+  category: Category | null;
+  /** True: the line goes to review. */
+  review: boolean;
+  /** The category review suggests (never a transfer, never a catch-all), with the model's confidence. */
+  suggestion: Category | null;
+  confidence: number | null;
+}
+
+export function modelOutcome(categories: Category[], answer: ModelAnswer | null | undefined, kind: TransactionKind, description = ""): ModelOutcome | null {
+  if (!answer) return null;
+  const confidence = typeof answer.confidence === "number" ? answer.confidence : null;
+  if (modelTransfer(answer, description, kind)) return { category: null, review: true, suggestion: null, confidence: null };
+  const c = modelCategory(categories, answer, kind, description);
+  if (answer.review) return { category: null, review: true, suggestion: c && !isCatchAll(c) ? c : null, confidence };
+  return { category: c, review: false, suggestion: null, confidence };
+}
+
+/**
+ * When the model's answer means a transfer rather than spending (and so is
+ * never applied, see modelOutcome): its
  * Transfers and Savings & Investing, and a Debt Payment that is a credit card
  * bill (the spending is on the card's own statement). Never for money to or
  * from a person (an Interac e-Transfer may be spending), and never for a loan,

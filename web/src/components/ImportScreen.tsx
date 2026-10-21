@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, categorizer } from "@/lib/api";
 import { fallbackCategory } from "@/lib/categorize";
-import { type ModelAnswer, modelCategory, modelTransfer } from "@/lib/categorizer";
+import { type ModelAnswer, modelOutcome } from "@/lib/categorizer";
 import { history, howOftenSeen } from "@/lib/categorize/facts";
 import { examplesFor, sendExamples } from "@/lib/examples";
 import { randomId } from "@/lib/ids";
@@ -11,7 +11,7 @@ import {
   DATE_FORMATS, type ImportProfile, type PdfProblem, type PdfStatementResult, type SavedProfile, type StatementFormat,
   type StatementResult, PdfStatementError, columnValues, decodeText, detectFormat, dropRepeatedBankIds, extractPdfPages,
   guessDelimiter, guessProfile, isPdf, newAccounts, newCategories, ofxCurrency, previewCsv, profileFromJson, profileToJson,
-  accountIdFor, buildImport, markOverlap, propose, readCsv, readOfx, readQif, readPdfStatement, readWealthsimpleActivityCsv, readGoPeerCsv,
+  buildImport, markOverlap, propose, readCsv, readOfx, readQif, readPdfStatement, readWealthsimpleActivityCsv, readGoPeerCsv,
 } from "@/lib/importers";
 import { loadPdfJs } from "@/lib/importers/pdfBrowser";
 import { categoriesFor } from "@/lib/ledger";
@@ -219,28 +219,13 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
   }, [modelOn, unknown, currency.minorUnits, seen]);
   const createdCategories = useMemo(() => newCategories(proposals), [proposals]);
   const createdAccounts = useMemo(() => newAccounts(proposals), [proposals]);
-  // The account a model transfer goes to: the household's of that name, one this import makes, or a new one.
-  const accountNamed = (name: string, type: Account["type"]): Account => {
-    const k = name.trim().toLowerCase();
-    return config.accounts.find((a) => !a.archived && a.name.trim().toLowerCase() === k)
-      ?? createdAccounts.find((a) => a.name.trim().toLowerCase() === k)
-      ?? { id: accountIdFor(config.household.id, name), name, type, opening_balance_minor: 0, opening_balance_date: null,
-        round_up_to: null, round_up_multiplier: null, sort: config.accounts.length + createdAccounts.length, archived: false };
-  };
-  /** The categorizer was unsure: the line stays in Other, marked for review. */
-  const toReview = (t: Transaction) => !!answers[t.id]?.review;
-  type Guess = { transfer: null; category: Category; fixed: boolean } | { transfer: Account; direction: "out" | "in"; category: null };
+  /** The categorizer was unsure, or called it a transfer (a model never makes one): the line stays in Other, for review. */
+  const toReview = (t: Transaction, description: string) => !!modelOutcome(config.categories, answers[t.id], t.kind, description)?.review;
+  type Guess = { category: Category; fixed: boolean };
   const modelGuess = (t: Transaction, description: string): Guess | null => {
-    const a = answers[t.id];
-    if (!a || a.review) return null;
-    const move = modelTransfer(a, description, t.kind);
-    if (move) {
-      const other = accountNamed(move.counterpart, move.counterpartType);
-      if (other.id !== t.account_id) return { transfer: other, direction: move.direction, category: null };
-    }
-    const c = modelCategory(config.categories, a, t.kind, description);
+    const c = modelOutcome(config.categories, answers[t.id], t.kind, description)?.category;
     // Fixed or flexible is the category's to say (categories.fixed), never the model's.
-    return c ? { transfer: null, category: c, fixed: !!c.fixed } : null;
+    return c ? { category: c, fixed: !!c.fixed } : null;
   };
   const brandNew = createdCategories.filter((c) => !config.categories.some((k) => k.id === c.id));
   const statedCurrency = bytes && format === "ofx" ? ofxCurrency(bytes) : format === "pdf" && pdf ? pdf.currency : null;
@@ -461,10 +446,10 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
             const by = (src: string) => fresh.filter((p) => p.source === src).length;
             const guessed = fresh.filter((p) => p.source === "fallback" && !overrides[p.transaction.id]).map((p) => modelGuess(p.transaction, p.line.description)).filter(Boolean);
             const modelled = guessed.length;
-            const reviewing = fresh.filter((p) => p.source === "fallback" && !overrides[p.transaction.id] && toReview(p.transaction)).length;
+            const reviewing = fresh.filter((p) => p.source === "fallback" && !overrides[p.transaction.id] && toReview(p.transaction, p.line.description)).length;
             const people = fresh.filter((p) => p.personReview && !overrides[p.transaction.id]).length;
             const shops = fresh.filter((p) => p.source === "merchant" && !p.personReview).length;
-            const moved = fresh.filter((p) => p.transaction.kind === "transfer").length + guessed.filter((g) => g!.category === null).length;
+            const moved = fresh.filter((p) => p.transaction.kind === "transfer").length;
             const parts = [
               by("rule") && `${by("rule")} by your rules`,
               moved && `${moved} transfers (not spending)`,
@@ -499,8 +484,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
             {proposals.slice(0, 200).map((p, i) => {
               const t = p.transaction;
               const guess = p.source === "fallback" && !p.alreadyImported ? modelGuess(t, p.line.description) : null;
-              const modelMove = guess && guess.category === null && !overrides[t.id] ? guess : null;
-              const cat = overrides[t.id] ?? guess?.category?.id ?? (modelMove ? "" : t.category_id);
+              const cat = overrides[t.id] ?? guess?.category?.id ?? t.category_id;
               return (
                 <div key={t.id} className="flex items-center gap-3 px-5 py-3 border-b border-line" data-testid="preview-row">
                   <div className="flex-1 min-w-0">
@@ -515,7 +499,6 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
                           value={cat ?? ""}
                           onChange={(e) => setOverrides({ ...overrides, [t.id]: e.target.value })}
                         >
-                          {modelMove && <option value="">Transfer {modelMove.direction === "out" ? "to" : "from"} {modelMove.transfer.name}</option>}
                           {[...categoriesFor(config, t.kind), ...createdCategories.filter((c) => !config.categories.some((k) => k.id === c.id))].map((c) => (
                             <option key={c.id} value={c.id}>{c.name}</option>
                           ))}
@@ -531,8 +514,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
                           : p.personReview ? <span className="text-warning" data-testid="to-review-person">· to review (money with a person)</span>
                           : p.source === "merchant" ? <span data-testid="by-merchant">· known shop</span>
                           : p.source === "debt" ? <span data-testid="by-debt">· debt payment</span>
-                            : p.source === "fallback" && toReview(t) ? <span className="text-warning" data-testid="to-review">· to review</span>
-                            : modelMove ? <span data-testid="by-model">· transfer, by categorizer</span>
+                            : p.source === "fallback" && toReview(t, p.line.description) ? <span className="text-warning" data-testid="to-review">· to review</span>
                               : guess ? <span data-testid="by-model">· by categorizer</span> : null
                       )}
                     </div>

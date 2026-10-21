@@ -12,13 +12,13 @@
  * also has are kept (and tagged with the new version), the rest are removed.
  * An earlier version than the one imported already changes nothing.
  */
-import { type ModelAnswer, modelCategory, modelTransfer } from "../categorizer";
+import { type ModelAnswer, modelOutcome } from "../categorizer";
 import { sha256Hex } from "../ids";
 import { type ExampleSource, sortedBy } from "../examples";
 import type { Account, Category, Transaction } from "../model";
-import { REVIEW_TAG, withTag, withoutTag } from "../review";
+import { REVIEW_TAG, withSuggestion, withTag, withoutTag } from "../review";
 import { matchTransfers, type MatchResult } from "../transferMatch";
-import { accountIdFor, type ProposedTransaction } from "./plan";
+import type { ProposedTransaction } from "./plan";
 import type { StatementAccountInfo } from "./types";
 
 export const STATEMENT_TAG_PREFIX = "fulla:st:";
@@ -57,7 +57,7 @@ export interface ImportInput {
 }
 
 export interface ImportOutput extends MatchResult {
-  /** Accounts to write first: made by this import (the categorizer's transfers included). */
+  /** Accounts to write first: made by this import. */
   accounts: Account[];
   /** Your changes on the import screen, as before and after (examples.ts). */
   examples: { before: Transaction; after: Transaction }[];
@@ -69,37 +69,21 @@ export interface ImportOutput extends MatchResult {
 
 /** The rows an import writes. */
 export function buildImport(input: ImportInput): ImportOutput {
-  const { householdId, categories, answers, overrides = {} } = input;
+  const { categories, answers, overrides = {} } = input;
   const fresh = input.proposals.filter((p) => !p.alreadyImported);
-  const modelAccounts = new Map<string, Account>();
   const known = [...input.accounts, ...input.createdAccounts];
-  const accountNamed = (name: string, type: Account["type"]): Account => {
-    const k = name.trim().toLowerCase();
-    return known.find((a) => !a.archived && a.name.trim().toLowerCase() === k)
-      ?? { id: accountIdFor(householdId, name), name, type, opening_balance_minor: 0, opening_balance_date: null,
-        round_up_to: null, round_up_multiplier: null, sort: known.length, archived: false };
-  };
 
-  // What Fulla writes for a line, marked with how it was sorted.
+  // What Fulla writes for a line, marked with how it was sorted. A model never makes a
+  // transfer (modelOutcome): what it is unsure of, or calls a transfer, goes to review.
   const auto = (p: ProposedTransaction): Transaction => {
     const t = p.transaction;
-    const answer = answers[t.id];
     if (p.source !== "fallback") return sortedBy(t, p.source === null ? "none" : (p.source as ExampleSource));
-    if (!answer || answer.review) return sortedBy(answer?.review ? withTag(t, REVIEW_TAG) : t, "none", answer?.confidence ?? null);
-    const move = modelTransfer(answer, p.line.description, t.kind);
-    if (move) {
-      const other = accountNamed(move.counterpart, move.counterpartType);
-      if (other.id !== t.account_id) {
-        if (!input.accounts.some((a) => a.id === other.id)) modelAccounts.set(other.id, other);
-        return {
-          ...t, kind: "transfer", category_id: null, paid_by_member_id: null, split: null, recurrence: "variable",
-          account_id: move.direction === "out" ? t.account_id : other.id, to_account_id: move.direction === "out" ? other.id : t.account_id,
-        };
-      }
-    }
-    const c = modelCategory(categories, answer, t.kind, p.line.description);
-    if (!c) return sortedBy(t, "none", answer.confidence ?? null);
-    return sortedBy({ ...t, category_id: c.id, recurrence: c.fixed ? "fixed" : t.recurrence }, answer.by === "jev" ? "jev" : "model", answer.confidence ?? null);
+    const out = modelOutcome(categories, answers[t.id], t.kind, p.line.description);
+    if (!out) return sortedBy(t, "none");
+    if (out.review) return sortedBy(withSuggestion(withTag(t, REVIEW_TAG), out.suggestion?.id ?? null), "none", out.suggestion ? out.confidence : null);
+    const c = out.category;
+    if (!c) return sortedBy(t, "none", out.confidence);
+    return sortedBy({ ...t, category_id: c.id, recurrence: c.fixed ? "fixed" : t.recurrence }, answers[t.id]!.by === "jev" ? "jev" : "model", out.confidence);
   };
   const examples: { before: Transaction; after: Transaction }[] = [];
   let txs = fresh.map((p) => {
@@ -136,13 +120,12 @@ export function buildImport(input: ImportInput): ImportOutput {
 
   const m = matchTransfers({
     accountId: input.accountId, fresh: txs, existing: rows,
-    accounts: [...known, ...modelAccounts.values(), ...(input.proposedAccount ? [input.proposedAccount] : [])],
+    accounts: [...known, ...(input.proposedAccount ? [input.proposedAccount] : [])],
   });
   const updated = new Map(replacing.map((t) => [t.id, t]));
   for (const u of m.update) updated.set(u.id, u);
   const used = new Set([...m.insert, ...updated.values()].flatMap((t) => [t.account_id, t.to_account_id]).filter(Boolean));
   const made = new Map(input.createdAccounts.map((a) => [a.id, a]));
-  for (const [id, a] of modelAccounts) if (!made.has(id)) made.set(id, a);
   return {
     ...m, update: [...updated.values()], accounts: [...made.values()].filter((a) => used.has(a.id)), examples,
     replaced: replacing.filter((r) => r.status === "deleted").length, older: false,
