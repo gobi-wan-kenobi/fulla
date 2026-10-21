@@ -12,10 +12,10 @@
  *
  * Each group suggests a category, with how sure it is:
  *  - a household rule or a shop Fulla knows that now matches (sure);
- *  - what the categorizer would have chosen had it been sure (the suggestion
- *    tag an import leaves, review.ts), at its confidence;
- *  - what the household itself chose for the same merchant before, at the
- *    share of those lines it chose it for.
+ *  - else the surer of: what the categorizer would have chosen had it been
+ *    sure (the suggestion tag, review.ts), at its confidence; and what the
+ *    household itself chose for the same merchant before, at the share of
+ *    those lines it chose it for.
  * Never a transfer: a model's transfer answer leaves no suggestion.
  */
 import { cleanMerchant, isCatchAll, suggest, words } from "./categorize";
@@ -120,14 +120,17 @@ function lineSuggestion(t: Transaction, key: string, rules: CategorizationRule[]
     return { categoryId: s.category.id, confidence: 1, source: s.source };
   }
   const tagged = usable(suggestedId(t, ids));
-  if (tagged) return { categoryId: tagged.id, confidence: sourceOf(t).confidence ?? 0.5, source: "categorizer" };
+  const guess: LineSuggestion | null = tagged ? { categoryId: tagged.id, confidence: sourceOf(t).confidence ?? 0.5, source: "categorizer" } : null;
+  let before: LineSuggestion | null = null;
   const seen = past.get(key);
   if (seen) {
     const total = [...seen.values()].reduce((a, b) => a + b, 0);
     const [id, n] = [...seen.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0];
-    if (usable(id)) return { categoryId: id, confidence: n / total, source: "history" };
+    if (usable(id)) before = { categoryId: id, confidence: n / total, source: "history" };
   }
-  return null;
+  // The surer of the two: what the household chose before, or the categorizer's guess.
+  if (guess && before) return before.confidence >= guess.confidence ? before : guess;
+  return guess ?? before;
 }
 
 /**

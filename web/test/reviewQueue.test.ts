@@ -126,6 +126,11 @@ describe("the review queue by merchant", () => {
     const g = reviewGroups(waiting.map(row), CATEGORIES, [], [...past, ...waiting]);
     expect(g[0].suggestion).toMatchObject({ category: GROCERIES, source: "history" });
     expect(g[0].suggestion!.confidence).toBeCloseTo(2 / 3);
+    // A less sure categorizer guess does not hide it; a surer one wins.
+    const unsure = [tx("EXAMPLE DELI 05", 100, "2030-01-02", { tags: [REVIEW_TAG, suggestionTag(EATING.id), "fulla:conf:30"] })];
+    expect(reviewGroups(unsure.map(row), CATEGORIES, [], [...past, ...unsure])[0].suggestion).toMatchObject({ category: GROCERIES, source: "history" });
+    const sure = [tx("EXAMPLE DELI 06", 100, "2030-01-02", { tags: [REVIEW_TAG, suggestionTag(EATING.id), "fulla:conf:90"] })];
+    expect(reviewGroups(sure.map(row), CATEGORIES, [], [...past, ...sure])[0].suggestion).toMatchObject({ category: EATING, source: "categorizer" });
     const rule: CategorizationRule = { id: id(801), pattern: "example deli", action: { category_id: EATING.id }, sort: 0, active: true, archived: false };
     expect(reviewGroups(waiting.map(row), CATEGORIES, [rule], [...past, ...waiting])[0].suggestion).toMatchObject({ category: EATING, source: "rule", confidence: 1 });
   });
