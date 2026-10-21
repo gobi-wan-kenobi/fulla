@@ -6,15 +6,15 @@ import type { PdfLine } from "./wealthsimplePdf";
 
 /**
  * Money as a statement prints it, signed, in minor units (two decimals):
- * "$1,234.56", "-120.00", "- $350.00", "+ $0.00", "= $2,527.36", ".99".
+ * "$1,234.56", "-120.00", "- $350.00", "$-1,100.00", "+ $0.00", "= $2,527.36", ".99".
  * Null for anything else (a rate such as "1.99%", a quantity with more decimals).
  */
 export function money(text: string): number | null {
-  const m = /^([-–−+=])?\s*([-–−])?\s*\$?\s*(\d{1,3}(?:,\d{3})+|\d+)?\.(\d{2})(?:\s*(?:CAD|USD))?$/.exec(text.replace(/[\u00a0\u202f]/g, " ").trim());
+  const m = /^([-–−+=])?\s*([-–−])?\s*\$?\s*([-–−])?\s*(\d{1,3}(?:,\d{3})+|\d+)?\.(\d{2})(?:\s*(?:CAD|USD))?$/.exec(text.replace(/[\u00a0\u202f]/g, " ").trim());
   if (!m) return null;
-  const minor = Number((m[3] ?? "0").replace(/,/g, "")) * 100 + Number(m[4]);
+  const minor = Number((m[4] ?? "0").replace(/,/g, "")) * 100 + Number(m[5]);
   if (!Number.isSafeInteger(minor)) return null;
-  const negative = (m[1] && /[-–−]/.test(m[1])) || !!m[2];
+  const negative = (m[1] && /[-–−]/.test(m[1])) || !!m[2] || !!m[3];
   return negative ? -minor : minor;
 }
 

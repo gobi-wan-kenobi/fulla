@@ -144,3 +144,31 @@ export function singleCurrencyInvestmentStyle(): Uint8Array {
   ];
   return makePdf([p1, p2, p3], size);
 }
+
+/**
+ * A portfolio line of credit's statement: the same layout, but the cash
+ * balances are owed, printed "$-1,000.00", and the month's interest is an
+ * INTCHARGED line. Invented, like the rest.
+ */
+export function creditLineInvestmentStyle(): Uint8Array {
+  const p1: Text[] = [
+    ...row(798, [[224, "ORDER EXECUTION ONLY ACCOUNT"]], 9),
+    ...row(782, [[224, "All figures in $CAD unless otherwise specified"]], 8),
+    ...row(762, [[246, "Account No."], [366, "Owner"], [468, "Statement Period"]], 8),
+    ...row(749, [[237, "ZZ9EXAMPLE8CAD"], [335, "Example Person"], [457, "2030-03-01 - 2030-03-31"]], 8),
+    ...row(605, [[222, "Total Portfolio"], [327, "$-905.00"], [369, "100.00"]], 8),
+    ...row(528, [[49, "Portfolio Cash"]], 11),
+    ...row(500, [[49, "Last Statement Cash Balance"], [176, "$-1,000.00"], [241, "Cash Paid In"], [302, "Deposits"], [370, "$100.00"]], 8),
+    ...row(488, [[49, "Total Cash Paid In"], [175, "$100.00"]], 8),
+    ...row(477, [[49, "Total Cash Paid Out"], [180, "$5.00"]], 8),
+    ...row(466, [[49, "Closing Cash Balance"], [180, "$-905.00"]], 8),
+    ...row(100, [[34, "Example text: Wealthsimple Investments Inc."]], 7),
+  ];
+  const p2: Text[] = [
+    ...row(797, [[49, "Activity - Current period"]], 11),
+    ...row(781, [[48, "Date"], [81, "Transaction"], [128, "Description"], [440, "Debit"], [480, "Credit"], [530, "Balance"]], 8),
+    ...row(760, [[37, "2030-03-10"], [81, "TRFIN"], [129, "Money transfer into the account (executed at 2030-03-10)"], [456, "$0.00"], [490, "$100.00"], [535, "$-900.00"]], 6),
+    ...row(740, [[37, "2030-03-31"], [81, "INTCHARGED"], [136, "Margin Interest Charges for ZZ9EXAMPLE8CAD (executed at 2030-03-31)"], [456, "$5.00"], [494, "$0.00"], [535, "$-905.00"]], 6),
+  ];
+  return makePdf([p1, p2], size);
+}

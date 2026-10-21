@@ -2066,6 +2066,24 @@ test('an account can be an investment account, and still nothing but the known t
   assert.ok(!r.ok, 'an unknown type was stored');
 });
 
+test('a line of credit and a loan are account types of their own (0034)', (ctx) => {
+  const loc = uuid();
+  const loan = uuid();
+  const saved = rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id: loc, name: 'Example line of credit', type: 'line_of_credit', institution: 'Example Bank', last4: '0042' } });
+  assert.equal(saved.accounts.find((x) => x.id === loc).type, 'line_of_credit');
+  const both = rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id: loan, name: 'Example loan', type: 'loan', institution: 'Example Lender' } });
+  assert.equal(both.accounts.find((x) => x.id === loan).type, 'loan');
+  // A stand-in card becomes a line of credit, keeping its name.
+  const stand = uuid();
+  rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id: stand, name: 'EXAMPLE CREDIT LINE', type: 'credit_card' } });
+  const moved = rpc(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id: stand, name: 'EXAMPLE CREDIT LINE', type: 'line_of_credit' } }).accounts.find((x) => x.id === stand);
+  assert.equal(moved.type, 'line_of_credit');
+  assert.equal(moved.name, 'EXAMPLE CREDIT LINE');
+  for (const type of ['loc', 'mortgage', 'LOAN']) {
+    expectError(ctx.db, ctx.alice, 'fulla_account_upsert', { p_household_id: ctx.hh, p_account: { id: loan, name: 'Example loan', type } }, 'validation_failed', 400);
+  }
+});
+
 test('a category change is saved as a scrubbed example with labels, only by members', (ctx) => {
   const cats = rpc(ctx.db, ctx.alice, 'fulla_config_get', { p_household_id: ctx.hh }).categories;
   const other = cats.find((c) => c.name === 'Other').id;

@@ -8,13 +8,14 @@ import { HOUSEHOLD, LEISURE, category, config } from "./support";
 
 describe("account types", () => {
   it("are the database's list, investment included, each with a label and an icon", () => {
-    expect(ACCOUNT_TYPES).toEqual(["cash", "checking", "savings", "credit_card", "investment", "other"]);
+    expect(ACCOUNT_TYPES).toEqual(["cash", "checking", "savings", "credit_card", "line_of_credit", "loan", "investment", "other"]);
     for (const t of ACCOUNT_TYPES) {
       expect(accountTypeLabel(t)).not.toContain("_");
       expect(ACCOUNT_TYPE_ICONS[t]).toBeTruthy();
     }
     expect(accountTypeLabel("investment")).toBe("investment");
     expect(accountTypeLabel("credit_card")).toBe("credit card");
+    expect(accountTypeLabel("line_of_credit")).toBe("line of credit");
     expect(accountTypeLabel("some_new_kind")).toBe("some new kind"); // a type from a newer server still reads
   });
 

@@ -35,6 +35,8 @@ export const INVESTMENT_CODES: Record<string, { role: LineRole; sign: 1 | -1 }> 
   REIMB: { role: "fee", sign: 1 },
   // A government grant paid into an RESP (CESG and the like): the account's, not a transfer and not the household's income.
   GRANT: { role: "grant", sign: 1 },
+  // Interest charged on borrowed money (a margin account, a portfolio line of credit): Debt payments.
+  INTCHARGED: { role: "card-interest", sign: -1 },
 };
 
 /** True when the text is a Wealthsimple investment account statement. */
@@ -84,7 +86,7 @@ function inColumn(l: PdfLine | undefined, col: PdfCell | null): number | null {
 }
 
 const clean = (s: string) =>
-  s.replace(/\s\$[A-Z]{3}\b/g, " ").replace(/\s*\(executed at[^)]*\)?/gi, "").replace(/,?\s*received on \d{4}-\d{2}-\d{2}.*$/i, "").replace(/,?\s*record date.*$/i, "")
+  s.replace(/\s\$[A-Z]{3}\b/g, " ").replace(/\s*\(executed at[^)]*\)?/gi, "").replace(/,?\s*received on \d{4}-\d{2}-\d{2}.*$/i, "").replace(/,?\s*record date.*$/i, "").replace(/^(margin interest charges)\s+for\s+\S+$/i, "$1")
     .replace(/\s+/g, " ").replace(/[\s,]+$/, "").trim();
 
 /**
@@ -188,6 +190,7 @@ export function readWealthsimpleInvestment(pages: PdfPage[]): PdfStatementResult
     const cad = usd ? Math.round(amount * rate) : amount;
     out.push({
       date: r.date, amountMinor: cad, description: clean(r.description.join(" ")) || r.code, role: what.role,
+      ...(r.code === "INTCHARGED" ? { debtKind: "line_of_credit" as const } : {}),
       ...(usd ? { originalAmountMinor: Math.abs(amount), originalCurrency: "USD" } : {}),
     });
     posted.push(r.date);

@@ -64,19 +64,26 @@ export interface Member {
   has_account: boolean;
 }
 
-/** Every account type the database takes (0001, investment since 0029), in the order they are listed. */
-export const ACCOUNT_TYPES = ["cash", "checking", "savings", "credit_card", "investment", "other"] as const;
+/** Every account type the database takes (0001; investment since 0029; line_of_credit and loan since 0034), in the order they are listed. */
+export const ACCOUNT_TYPES = ["cash", "checking", "savings", "credit_card", "line_of_credit", "loan", "investment", "other"] as const;
 export type AccountType = (typeof ACCOUNT_TYPES)[number];
 const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
-  cash: "cash", checking: "checking", savings: "savings", credit_card: "credit card", investment: "investment", other: "other",
+  cash: "cash", checking: "checking", savings: "savings", credit_card: "credit card", line_of_credit: "line of credit", loan: "loan",
+  investment: "investment", other: "other",
 };
 /** An account type's icon (a Material name, like the categories', drawn by Icon). */
 export const ACCOUNT_TYPE_ICONS: Record<AccountType, string> = {
-  cash: "payments", checking: "account_balance", savings: "savings", credit_card: "credit_card", investment: "trending_up", other: "more_horiz",
+  cash: "payments", checking: "account_balance", savings: "savings", credit_card: "credit_card", line_of_credit: "credit_score",
+  loan: "request_quote", investment: "trending_up", other: "more_horiz",
 };
 /** How an account's type reads next to its name ("credit card", "investment"). */
 export function accountTypeLabel(type: string): string {
   return ACCOUNT_TYPE_LABELS[type as AccountType] ?? type.replace(/_/g, " ");
+}
+
+/** What is owed rather than held: a card, a line of credit, a loan. Its balance is negative while money is owed. */
+export function isDebtAccount(a: Pick<Account, "type">): boolean {
+  return a.type === "credit_card" || a.type === "line_of_credit" || a.type === "loan";
 }
 
 export interface Account {

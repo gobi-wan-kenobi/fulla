@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import type { DebtKind } from "../defaults";
 import type { DecimalStyle } from "../money";
 
 /** One line of a statement. amountMinor is signed: negative is money out. */
@@ -31,6 +32,10 @@ export interface StatementLine {
   /** A purchase made in another currency: the amount in that currency (minor units, positive) and its code. */
   originalAmountMinor?: number | null;
   originalCurrency?: string | null;
+  /** Interest on a line of credit or a loan ("card-interest" on a debt account): which Debt payments subcategory. */
+  debtKind?: DebtKind | null;
+  /** The household account a stated transfer comes from or goes to, by the name the statement gives ("Example Chequing"). */
+  counterpart?: string | null;
 }
 
 export type LineRole = "card-payment" | "transfer" | "credit" | "card-interest" | "fee" | "dividend" | "interest" | "grant";
@@ -47,7 +52,7 @@ export interface SkippedLine {
  */
 export interface StatementAccountInfo {
   institution: string | null;
-  type: "checking" | "savings" | "credit_card" | "investment" | "other" | null;
+  type: "checking" | "savings" | "credit_card" | "line_of_credit" | "loan" | "investment" | "other" | null;
   /** Four digits (or, for an account number with letters, its last four letters and digits, upper case), or null. */
   last4: string | null;
   /**

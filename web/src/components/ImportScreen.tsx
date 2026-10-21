@@ -11,7 +11,7 @@ import {
   DATE_FORMATS, type ImportProfile, type PdfProblem, type PdfStatementResult, type SavedProfile, type StatementFormat,
   type StatementResult, PdfStatementError, columnValues, decodeText, detectFormat, dropRepeatedBankIds, extractPdfPages,
   guessDelimiter, guessProfile, isPdf, newAccounts, newCategories, ofxCurrency, previewCsv, profileFromJson, profileToJson,
-  accountIdFor, buildImport, propose, readCsv, readOfx, readQif, readPdfStatement, readWealthsimpleActivityCsv,
+  accountIdFor, buildImport, markOverlap, propose, readCsv, readOfx, readQif, readPdfStatement, readWealthsimpleActivityCsv, readGoPeerCsv,
 } from "@/lib/importers";
 import { loadPdfJs } from "@/lib/importers/pdfBrowser";
 import { categoriesFor } from "@/lib/ledger";
@@ -100,8 +100,8 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
       }
       return;
     }
-    // A Wealthsimple investment account's activity export: read like its PDF statement.
-    const activity = readWealthsimpleActivityCsv(decodeText(read), currency.code);
+    // A Wealthsimple investment account's activity export, or goPeer's loan activity: read like a PDF statement.
+    const activity = readWealthsimpleActivityCsv(decodeText(read), currency.code) ?? readGoPeerCsv(decodeText(read));
     if (activity) {
       setUnreadable(false);
       setPdf(activity);
@@ -170,7 +170,8 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
   const proposals = useMemo(() => {
     if (!deduped || !account || !uncategorized) return [];
     const members = activeMembers(config);
-    return propose({
+    // Lines the household already has from another file of the same account (a CSV export of the month) are left out too.
+    return markOverlap(propose({
       householdId: config.household.id, accountId: account, lines: deduped.lines, rules: config.categorization_rules ?? [],
       uncategorizedExpenseId: uncategorizedExpense.id, uncategorizedIncomeId: uncategorizedIncome.id,
       payerMemberId: config.me_member_id ?? members[0]?.id ?? "",
@@ -179,7 +180,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
       names: { categories: config.categories, members: config.members, accounts: config.accounts },
       knownMerchants: true,
       knownTransfers: true,
-    });
+    }), rows.map((r) => r.tx), account).proposals;
   }, [deduped, account, config, rows, uncategorized, uncategorizedExpense, uncategorizedIncome]);
   const fresh = proposals.filter((p) => !p.alreadyImported);
 
@@ -329,7 +330,7 @@ export function ImportScreen({ config, rows, onImport, onConfig }: {
         }}
       />
       {!bytes ? (
-        <EmptyState title="Bring in a statement" text="OFX, QFX, QIF or CSV from your bank, or a PDF statement: Wealthsimple chequing and investment accounts, American Express and Capital One cards. It is read here, on this phone; importing the same file again adds nothing twice.">
+        <EmptyState title="Bring in a statement" text="OFX, QFX, QIF or CSV from your bank, or a PDF statement: Wealthsimple chequing and investment accounts; American Express, Capital One, RBC, TD, Tangerine and Triangle cards; a Tangerine line of credit; a goPeer loan. It is read here, on this phone; importing the same file again adds nothing twice.">
           <PrimaryButton onClick={() => fileInput.current?.click()} busy={readingPdf} testId="choose-file">Choose a file</PrimaryButton>
           {readingPdf && <p className="t-secondary text-ink-muted pt-4">Reading the PDF…</p>}
           {done !== null && <p className="t-body pt-4" data-testid="import-done">Imported {done} transaction{done === 1 ? "" : "s"}.</p>}

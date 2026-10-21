@@ -26,7 +26,7 @@ export function findStatementAccount(accounts: Account[], info: StatementAccount
   return candidates[0] ?? null;
 }
 
-const KIND: Record<string, string> = { checking: "chequing", savings: "savings", credit_card: "card", investment: "investment", other: "account" };
+const KIND: Record<string, string> = { checking: "chequing", savings: "savings", credit_card: "card", line_of_credit: "line of credit", loan: "loan", investment: "investment", other: "account" };
 
 /** A new account for the statement, ready to confirm: "Wealthsimple chequing ••1234". */
 export function proposedStatementAccount(householdId: string, accounts: Account[], info: StatementAccountInfo): Account {

@@ -23,7 +23,7 @@
  */
 import { balancesView, type AccountLine } from "./balances";
 import { daysBetween, daysInMonth } from "./dates";
-import type { Account, Config, Transaction } from "./model";
+import { type Account, type Config, type Transaction, isDebtAccount } from "./model";
 import { type BalanceSnapshot, accountBalances } from "./overview";
 
 export type NetWorthGroup = "cash" | "investments" | "debt";
@@ -84,7 +84,7 @@ export interface NetWorth {
 }
 
 export function groupOf(a: Account): NetWorthGroup {
-  if (a.type === "credit_card") return "debt";
+  if (isDebtAccount(a)) return "debt";
   if (a.type === "investment") return "investments";
   return "cash";
 }

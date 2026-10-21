@@ -18,12 +18,34 @@ function statedTransfer(line: StatementLine): KnownTransfer | null {
     return { counterpart: BANK_ACCOUNT, counterpartType: "checking", direction: "in", reason: "card-payment" };
   }
   if (line.role === "transfer" && line.amountMinor !== 0) {
-    return { counterpart: OTHER_ACCOUNT, counterpartType: "other", direction: line.amountMinor < 0 ? "out" : "in", reason: "own-account" };
+    const named = line.counterpart?.trim();
+    return {
+      counterpart: named || OTHER_ACCOUNT, counterpartType: named ? "checking" : "other", direction: line.amountMinor < 0 ? "out" : "in", reason: "own-account",
+    };
   }
   return null;
 }
 
 export { matchRule } from "../categorize";
+
+const squash = (s: string) => normalizeName(s).replace(/[^\p{L}\p{N}]/gu, "");
+
+/**
+ * A repayment that goes to one of the household's own lines of credit or
+ * loans: a transfer into that account, not spending. The lender is known by
+ * the account's institution as the payment names it ("Pre-authorized Debit
+ * to Example Lender" pays the loan whose institution is Example Lender).
+ * Only money out that reads as a debt repayment (transfers.ts knownDebt).
+ */
+export function debtTransfer(line: StatementLine, debtAccounts: Account[]): KnownTransfer | null {
+  if (line.amountMinor >= 0 || debtAccounts.length === 0 || !knownDebt(line.description, line.amountMinor)) return null;
+  const text = squash(line.description);
+  const lender = debtAccounts.find((a) => {
+    const key = squash(a.institution ?? "");
+    return key.length >= 4 && text.includes(key);
+  });
+  return lender ? { counterpart: lender.name, counterpartType: lender.type, direction: "out", reason: "own-account", counterpartLast4: lender.last4 ?? null } : null;
+}
 
 export interface ProposedTransaction {
   transaction: Transaction;
@@ -144,6 +166,8 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
     newAccounts.set(key, made);
     return made;
   };
+  // The household's lines of credit and loans: a payment to one of their lenders is money moved into that account.
+  const debtAccounts = names.accounts.filter((a) => !a.archived && (a.type === "line_of_credit" || a.type === "loan"));
   const accountsInFile = new Set(lines.map((l) => (l.account ? normalizeName(l.account) : "")).filter((s) => s.length > 0));
 
   interface Read {
@@ -154,7 +178,7 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
   }
   const statedCategory = (line: StatementLine): Category | null => {
     switch (line.role) {
-      case "card-interest": return line.amountMinor < 0 ? debtCategory(categories, "card_interest") : null;
+      case "card-interest": return line.amountMinor < 0 ? debtCategory(categories, line.debtKind ?? "card_interest") : null;
       case "fee": return feesCategory(categories); // a fee given back is a refund in Fees
       case "dividend": return line.amountMinor > 0 ? investmentIncomeCategory(categories, "dividend") : null;
       case "interest": return line.amountMinor > 0 ? investmentIncomeCategory(categories, "interest") : null;
@@ -174,7 +198,9 @@ export function propose(input: ProposeInput): ProposedTransaction[] {
     }
     const name = line.bankCategory && !rule?.action.category_id && !pocket ? line.bankCategory.trim() || null : null;
     const free = !rule?.action.category_id && !rule?.action.kind && !pocket && !name;
-    const known = free ? (statedTransfer(line) ?? (input.knownTransfers ? knownTransfer(line.description, line.amountMinor) : null)) : null;
+    const known = free
+      ? (statedTransfer(line) ?? (input.knownTransfers ? (knownTransfer(line.description, line.amountMinor) ?? debtTransfer(line, debtAccounts)) : null))
+      : null;
     const counterpart = known ? accountFor(known.counterpart, known.counterpartType, known.counterpartLast4 ?? null) : null;
     const transfer = known && counterpart && counterpart.id !== lineAccount ? { known, counterpart } : null;
     // What the statement says the line is: a card's interest and fees, an investment account's dividends.
