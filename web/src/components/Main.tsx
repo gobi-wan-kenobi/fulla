@@ -98,7 +98,7 @@ export function Main(props: {
         ) : tab === "add" ? (
           <EntryScreen config={config} onSave={(tx) => household.saveTransaction(tx)} onConfig={household.setConfig} />
         ) : tab === "history" ? (
-          <HistoryScreen config={config} rows={household.rows} syncing={household.syncing} error={household.error} onOpen={setEditing} onRefresh={household.sync} onBulk={household.saveTransactions} />
+          <HistoryScreen config={config} rows={household.rows} syncing={household.syncing} error={household.error} onOpen={setEditing} onRefresh={household.sync} onBulk={household.saveTransactions} onConfig={household.setConfig} />
         ) : tab === "import" ? (
           <ImportScreen config={config} rows={household.rows} onImport={household.importTransactions} onConfig={household.setConfig} />
         ) : (

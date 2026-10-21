@@ -3,12 +3,13 @@
 import { Check, ChevronLeft, ChevronRight, CloudOff, ListChecks, RefreshCw, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { byDay, categoriesFor, monthOf, monthSpendingSplit, monthTotals, recategorized, shiftMonth, signedAmount, today, withRecurrence } from "@/lib/ledger";
-import { countsInTotals, outsideTotals, type Config, type Transaction } from "@/lib/model";
+import { countsInTotals, isCategorised, outsideTotals, type Config, type Transaction } from "@/lib/model";
 import { formatMoney } from "@/lib/money";
 import type { LocalRow } from "@/lib/sync";
 import { isUnmatchedTransfer, needsReview, UNMATCHED_TAG, withoutTag } from "@/lib/review";
 import { normalizeName } from "@/lib/text";
 import { Avatar, Chip, EmptyState, ScreenHeader } from "./Pieces";
+import { ReviewQueue } from "./ReviewQueue";
 
 type Filter = "all" | "spending" | "income" | "transfers" | "review";
 
@@ -23,7 +24,7 @@ function monthLabel(month: string, locale: string): string {
 }
 
 /** The month's rows by day, as the Android History: search, filter chips, a row per transaction. */
-export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh, onBulk }: {
+export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh, onBulk, onConfig, initialFilter = "all" }: {
   config: Config;
   rows: LocalRow[];
   syncing: boolean;
@@ -31,6 +32,8 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh,
   onOpen: (row: LocalRow) => void;
   onRefresh: () => void;
   onBulk?: (changes: { tx: Transaction; existing: LocalRow }[]) => Promise<number>;
+  onConfig?: (c: Config) => void;
+  initialFilter?: Filter;
 }) {
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -40,7 +43,7 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh,
   const locale = config.household.locale || "en-CA";
   const currency = config.household.currency;
   const [month, setMonth] = useState(monthOf(today()));
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>(initialFilter);
   const [query, setQuery] = useState("");
   const category = (id: string | null) => config.categories.find((c) => c.id === id);
   const account = (id: string | null) => config.accounts.find((a) => a.id === id)?.name;
@@ -58,11 +61,15 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh,
       return normalizeName(`${r.tx.note} ${category(r.tx.category_id)?.name ?? ""}`).includes(q);
     });
   }, [rows, filter, query]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Review is every month at once: what is waiting should not hide in an earlier month.
-  const days = useMemo(
-    () => (filter === "review" ? [...new Set(filtered.map((r) => monthOf(r.tx.date)))].sort().reverse().flatMap((m) => byDay(filtered, m)) : byDay(filtered, month)),
-    [filtered, month, filter],
-  );
+  // Review is every month at once: what is waiting should not hide in an earlier month. Lines to
+  // sort are grouped by merchant (ReviewQueue); what is left (unmatched transfers) is listed by day.
+  const grouped = useMemo(() => (filter === "review" && onBulk ? filtered.filter((r) => needsReview(r.tx) && isCategorised(r.tx.kind)) : []), [filtered, filter, onBulk]);
+  const days = useMemo(() => {
+    if (filter !== "review") return byDay(filtered, month);
+    const inGroups = new Set(grouped.map((r) => r.tx.id));
+    const rest = filtered.filter((r) => !inGroups.has(r.tx.id));
+    return [...new Set(rest.map((r) => monthOf(r.tx.date)))].sort().reverse().flatMap((m) => byDay(rest, m));
+  }, [filtered, month, filter, grouped]);
   const waiting = useMemo(() => ({
     review: rows.filter((r) => needsReview(r.tx)).length,
     unmatched: rows.filter((r) => isUnmatchedTransfer(r.tx)).length,
@@ -134,13 +141,13 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh,
       </div>
       {filter === "review" && (
         <p className="t-secondary text-ink-muted px-5 pb-2" data-testid="review-help">
-          {waiting.review} to sort: lines the categorizer was unsure of, and e-Transfers with people (only you know what they were for).
-          Pick a category and they leave this list; for a person, Fulla offers a rule so their next one is sorted.
+          {waiting.review} to sort, grouped by merchant: lines the categorizer was unsure of, and e-Transfers with people (only you know what they were for).
+          One choice sorts a whole group and saves a rule for that merchant; for a person, a rule is only saved if you ask.
           {" "}{waiting.unmatched} unmatched {waiting.unmatched === 1 ? "transfer" : "transfers"}: seen on one statement only. They match when you
           import the other account&apos;s statement; if there is none, mark them fine.
         </p>
       )}
-      <div className="flex items-center justify-between px-3">
+      {filter !== "review" && <div className="flex items-center justify-between px-3">
         <button type="button" aria-label="Previous month" className="yields p-2" onClick={() => setMonth(shiftMonth(month, -1))}><ChevronLeft size={22} /></button>
         <div className="text-center">
           <div className="t-section" data-testid="month">{monthLabel(month, locale)}</div>
@@ -152,12 +159,19 @@ export function HistoryScreen({ config, rows, syncing, error, onOpen, onRefresh,
           </div>
         </div>
         <button type="button" aria-label="Next month" className="yields p-2" onClick={() => setMonth(shiftMonth(month, 1))}><ChevronRight size={22} /></button>
-      </div>
+      </div>}
       {bulkNote && !selecting && <p className="t-label text-ink-muted px-5 pt-2" data-testid="bulk-done">{bulkNote}</p>}
       {(error || pending > 0) && (
         <p className="t-label text-warning px-5 pt-2">{error ? `Not synced: ${error}` : `${pending} waiting to sync`}</p>
       )}
+      {filter === "review" && onBulk && (
+        <ReviewQueue config={config} rows={grouped} allRows={rows} onBulk={onBulk} onConfig={onConfig} onOpen={onOpen} />
+      )}
+      {filter === "review" && days.length > 0 && grouped.length > 0 && (
+        <div className="t-section text-ink-muted uppercase px-5 pt-6" data-testid="review-unmatched">Unmatched transfers</div>
+      )}
       {days.length === 0 ? (
+        filter === "review" && grouped.length > 0 ? null :
         <EmptyState title="Nothing this month" text="What you add or import shows up here." />
       ) : (
         days.map((d) => (
