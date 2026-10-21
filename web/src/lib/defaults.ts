@@ -27,6 +27,9 @@ export interface DefaultCategory {
 export const SHARED_DEFAULT_CATEGORIES: DefaultCategory[] = data.categories as DefaultCategory[];
 /** The web fork's own starting categories (testdata/defaults/web-categories.json, fulla.web_defaults()). */
 export const WEB_DEFAULT_CATEGORIES: DefaultCategory[] = web.categories as DefaultCategory[];
+/** Subcategories of a shared starting category (web-categories.json shared_subcategories, 0035): Subscriptions › Software. */
+export interface SharedSubcategories { parent: string; subcategories: DefaultSubcategory[] }
+export const SHARED_SUBCATEGORIES: SharedSubcategories[] = ((web as { shared_subcategories?: SharedSubcategories[] }).shared_subcategories ?? []);
 /** What a new household starts with: the shared defaults, then the web's (Debt payments). */
 export const DEFAULT_CATEGORIES: DefaultCategory[] = [...SHARED_DEFAULT_CATEGORIES, ...WEB_DEFAULT_CATEGORIES];
 export const UNCATEGORIZED: DefaultCategory = data.uncategorized as DefaultCategory;

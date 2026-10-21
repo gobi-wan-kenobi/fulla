@@ -2030,6 +2030,26 @@ test('new households start with Fees, Investment income and Credit card interest
   assert.equal(cats.find((c) => c.name === 'Personal loan').fixed, true);
 });
 
+test('new households get Software and Streaming & entertainment under Subscriptions, once (0035)', (ctx) => {
+  const cats = rpc(ctx.db, ctx.alice, 'fulla_config_get', { p_household_id: ctx.hh }).categories;
+  const subs = cats.find((c) => c.name === 'Subscriptions' && c.parent_id === null);
+  assert.ok(subs);
+  assert.deepEqual(cats.filter((c) => c.parent_id === subs.id).sort((a, b) => a.sort - b.sort).map((c) => [c.name, c.applies_to]),
+    [['Software', 'expense'], ['Streaming & entertainment', 'expense']]);
+  // Seeding again adds nothing it already has.
+  ctx.db.admin(`select fulla.seed_shared_subcategories(${h.literal(ctx.hh)}, 'en');`);
+  assert.equal(rpc(ctx.db, ctx.alice, 'fulla_config_get', { p_household_id: ctx.hh }).categories.filter((c) => c.parent_id === subs.id).length, 2);
+});
+
+rawTest('a household created in Spanish gets the Subscriptions subcategories in Spanish (0035)', ({ db }) => {
+  const u = newUser(db, 'dora@example.com');
+  const r = rpc(db, u, 'fulla_household_create', {
+    p_name: 'Casa', p_currency: 'EUR', p_locale: 'es-ES', p_display_name: 'Dora', p_initials: 'D',
+  });
+  const subs = r.config.categories.find((c) => c.name === 'Suscripciones' && c.parent_id === null);
+  assert.deepEqual(r.config.categories.filter((c) => c.parent_id === subs.id).map((c) => c.name).sort(), ['Software', 'Streaming y entretenimiento']);
+});
+
 test('new households get Government grants under Investment income, left out of income; a save keeps the flag (0030)', (ctx) => {
   const cats = rpc(ctx.db, ctx.alice, 'fulla_config_get', { p_household_id: ctx.hh }).categories;
   const inv = cats.find((c) => c.name === 'Investment income' && c.parent_id === null);

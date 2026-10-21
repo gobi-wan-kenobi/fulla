@@ -41,7 +41,7 @@ describe("the model's prompt and answer", () => {
 
   it.each([
     ["Dining & Take\u2011out", "Coffee Shops", "expense", "Eating out"],
-    ["Entertainment & Recreation", "Streaming Subscriptions", "expense", "Subscriptions"],
+    ["Entertainment & Recreation", "Streaming Subscriptions", "expense", "Subscriptions"], // no subcategories: the parent
     ["Entertainment & Recreation", "Video Games", "expense", "Leisure"],
     ["Transportation", "Fuel", "expense", "Transport"],
     ["Utilities", "Mobile Phone", "expense", "Utilities"],

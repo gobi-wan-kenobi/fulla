@@ -64,7 +64,7 @@ describe("known merchants", () => {
     ["PETRO-CANADA 98765", "transport"],
     ["ROGERS ******1234", "utilities"],
     ["ENBRIDGE GAS DISTRIB", "utilities"],
-    ["SPOTIFY P1234ABCD", "subscriptions"],
+    ["SPOTIFY P1234ABCD", "subscriptions/streaming"],
     ["AMAZON.CA", "shopping"],
     ["CANADIAN TIRE #102", "shopping"],
     ["LCBO/RAO #217", "leisure"],

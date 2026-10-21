@@ -10,7 +10,7 @@
  * Only category names are in this file: the mapping from the model's
  * taxonomy to Fulla's starting categories.
  */
-import { categoryForKey, debtCategory, insuranceCategory, insuranceKind, isCatchAll } from "./categorize";
+import { categoryForKey, categoryForPath, debtCategory, insuranceCategory, insuranceKind, isCatchAll } from "./categorize";
 import type { DebtKind } from "./defaults";
 import { allows, type Account, type Category, type TransactionKind } from "./model";
 import { CREDIT_CARD, OTHER_ACCOUNT, isPersonToPerson, knownDebt } from "./transfers";
@@ -116,8 +116,11 @@ const SUBCATEGORIES: Record<string, string> = {
   "salary & wages": "salary",
   "interest & dividends": "interest",
   "interest": "interest",
-  "streaming subscriptions": "subscriptions",
-  "subscriptions": "subscriptions",
+  // Subscriptions' subcategories (fulla_subscription_subcategories); the older option names too.
+  "streaming & entertainment": "subscriptions/streaming",
+  "streaming subscriptions": "subscriptions/streaming",
+  "software": "subscriptions/software",
+  "subscriptions": "subscriptions/software",
   "online learning apps": "education",
   "gifts & flowers": "gifts",
   "charitable donations": "gifts",
@@ -185,6 +188,7 @@ export function modelCategory(categories: Category[], answer: ModelAnswer, kind:
     return debtCategory(categories, debtKind(answer.subcategory, description)) ?? categoryForKey(categories, "other", kind);
   }
   if (k === "insurance") return insuranceCategory(categories, insuranceKind(description) ?? insuranceKind(answer.subcategory ?? ""));
+  if (k.includes("/")) return categoryForPath(categories, k, kind);
   if (k === "interest") return categoryForKey(categories, "interest", kind) ?? categoryForKey(categories, "other_income", kind);
   const base = categoryForKey(categories, k, kind);
   const sub = answer.subcategory;

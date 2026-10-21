@@ -598,29 +598,38 @@
     "context": "`transaction` is one line from a Canadian household's bank or credit-card statement (CAD). Names, account numbers and bank names were removed and may appear as 'a person' or 'bank'."
    },
    "criteria": {
-    "Streaming Subscriptions": {
-     "includes": "Video, sports and music streaming and AI chat subscriptions.",
+    "Streaming & Entertainment": {
+     "includes": "Video, sports and music streaming services paid every month or year.",
      "examples": [
       "Netflix",
       "Spotify",
       "Disney Plus",
       "Crave",
-      "DAZN",
-      "CBC Gem",
+      "Prime Video",
+      "Apple TV+",
+      "Apple Music",
       "YouTube Premium",
-      "ChatGPT Plus"
-     ]
+      "DAZN",
+      "CBC Gem"
+     ],
+     "excludes": "Software, apps and AI tools (Software); buying a single game (Video Games)"
     },
-    "Subscriptions": {
-     "includes": "Other recurring app, email, web or software subscriptions.",
+    "Software": {
+     "includes": "Recurring software, app, email, web hosting, developer and AI-tool subscriptions.",
      "examples": [
+      "Vercel",
+      "OpenRouter",
+      "Superhuman",
+      "Mozilla VPN",
+      "ChatGPT Plus",
       "Proton",
       "Google Domains",
       "Google One",
       "iCloud",
       "Microsoft 365",
       "Wealthica"
-     ]
+     ],
+     "excludes": "Video, sports and music streaming (Streaming & Entertainment); mobile phone and internet bills (Utilities)"
     },
     "Video Games": {
      "includes": "Games, in-game purchases and gaming services.",
@@ -1180,5 +1189,9 @@
   "Salary & Wages": "salary",
   "Interest & Dividends": "interest",
   "*": "other_income"
+ },
+ "fulla_subscription_subcategories": {
+  "Streaming & Entertainment": "subscriptions/streaming",
+  "Software": "subscriptions/software"
  }
 }

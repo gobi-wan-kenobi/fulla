@@ -13,7 +13,7 @@
  * Everything here is pure, so the import, the entry screen and "apply rules
  * to what is already there" reach the same answer about the same text.
  */
-import { DEBT_KEY, type DebtKind, FEES_KEY, INSURANCE_KEY, INTEREST_KEY, INVESTMENT_INCOME_KEY, type InsuranceKind, UNCATEGORIZED, WEB_DEFAULT_CATEGORIES } from "./defaults";
+import { DEBT_KEY, type DebtKind, FEES_KEY, INSURANCE_KEY, INTEREST_KEY, INVESTMENT_INCOME_KEY, type InsuranceKind, SHARED_SUBCATEGORIES, UNCATEGORIZED, WEB_DEFAULT_CATEGORIES } from "./defaults";
 import { defaultKeys } from "./importers/hints";
 import { KNOWN_MERCHANTS, type KnownMerchant } from "./merchants";
 import { allows, type CategorizationRule, type Category, type TransactionKind } from "./model";
@@ -97,6 +97,23 @@ export function categoryForKey(categories: Category[], key: string, kind: Transa
   const live = categories.filter((c) => !c.archived && allows(c.applies_to, kind));
   const named = (c: Category) => defaultKeys(c.name).includes(key);
   return live.find((c) => c.parent_id === null && named(c)) ?? live.find(named) ?? null;
+}
+
+/**
+ * The household's subcategory for "parent/sub" (a shared starting category's
+ * subcategory, SHARED_SUBCATEGORIES; or a web one's), by any of the default's
+ * names, under the household's parent; else the parent itself; null without
+ * the parent. A plain key is categoryForKey.
+ */
+export function categoryForPath(categories: Category[], path: string, kind: TransactionKind): Category | null {
+  const [p, s] = path.split("/");
+  const parent = categoryForKey(categories, p, kind);
+  if (!s || !parent) return parent;
+  const sub = [...SHARED_SUBCATEGORIES.filter((g) => g.parent === p).flatMap((g) => g.subcategories),
+    ...(WEB_DEFAULT_CATEGORIES.find((d) => d.key === p)?.subcategories ?? [])].find((d) => d.key === s);
+  if (!sub) return parent;
+  const names = new Set(Object.values(sub.name).map(normalizeName));
+  return categories.find((c) => !c.archived && c.parent_id === parent.id && allows(c.applies_to, kind) && names.has(normalizeName(c.name))) ?? parent;
 }
 
 const DEBT_SUBS = WEB_DEFAULT_CATEGORIES.find((d) => d.key === DEBT_KEY)?.subcategories ?? [];
@@ -188,7 +205,7 @@ export function merchantCategory(categories: Category[], match: MerchantMatch, k
   const key = kind === "income" ? match.merchant.income : match.merchant.expense;
   if (key === INSURANCE_KEY && kind !== "income") return insuranceCategory(categories, insuranceKind(description));
   if (key === DEBT_KEY && kind !== "income") return debtCategory(categories, "card_interest");
-  return key ? categoryForKey(categories, key, kind) : null;
+  return key ? categoryForPath(categories, key, kind) : null;
 }
 
 const LIFE = /\b(life|vie|vida|leben|vita)\b|rbcins life|sun life|manulife|canada life|empire life|securian/;

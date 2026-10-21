@@ -212,5 +212,34 @@
         }
       ]
     }
+  ],
+  "shared_subcategories": [
+    {
+      "parent": "subscriptions",
+      "subcategories": [
+        {
+          "key": "software",
+          "name": {
+            "en": "Software",
+            "es": "Software",
+            "fr": "Logiciels",
+            "de": "Software",
+            "it": "Software",
+            "pt": "Software"
+          }
+        },
+        {
+          "key": "streaming",
+          "name": {
+            "en": "Streaming & entertainment",
+            "es": "Streaming y entretenimiento",
+            "fr": "Streaming et divertissement",
+            "de": "Streaming & Unterhaltung",
+            "it": "Streaming e intrattenimento",
+            "pt": "Streaming e entretenimento"
+          }
+        }
+      ]
+    }
   ]
 }

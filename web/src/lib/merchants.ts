@@ -13,7 +13,11 @@
 export interface KnownMerchant {
   /** Lower case, no accents, words separated by single spaces. */
   patterns: string[];
-  /** The category for money out (and refunds of it); null: not for money out. */
+  /**
+   * The category for money out (and refunds of it), a starting category's key; "parent/sub" for a
+   * subcategory (shared_subcategories in web-categories.json), the parent when the household has
+   * no such subcategory. Null: not for money out.
+   */
   expense: string | null;
   /** The category for money in; null: money in from it is a refund of `expense`. */
   income?: string | null;
@@ -52,11 +56,16 @@ export const KNOWN_MERCHANTS: KnownMerchant[] = [
     "hydro one", "toronto hydro", "alectra", "hydro ottawa", "hydro quebec", "hydro-quebec", "bc hydro", "enbridge",
     "enbridge gas", "fortis", "fortisbc", "epcor", "atco", "reliance home comfort", "enercare", "city of toronto water"],
     "utilities", { fixed: true }),
-  // Subscriptions
-  m(["netflix", "spotify", "disney plus", "disneyplus", "disney+", "crave", "prime video", "amazon prime", "apple com bill",
-    "apple.com/bill", "itunes", "google storage", "google one", "youtube premium", "youtubepremium", "audible", "xbox",
-    "playstation network", "nintendo", "patreon", "icloud", "microsoft 365", "dropbox", "paramount+", "openai", "chatgpt",
-    "vercel", "vercel inc", "mozilla", "mozillacorp", "mozilla vpn", "superhuman", "superhuman mail"],
+  // Subscriptions › Streaming & entertainment: names that only ever mean the service.
+  m(["netflix", "spotify", "disney plus", "disneyplus", "disney+", "crave", "prime video", "primevideo", "amazon prime video",
+    "apple tv+", "apple tv plus", "youtube premium", "youtubepremium", "apple music", "paramount+"],
+    "subscriptions/streaming", { fixed: true }),
+  // Subscriptions › Software: developer tools, mail and browser services.
+  m(["vercel", "vercel inc", "mozilla", "mozillacorp", "mozilla vpn", "superhuman", "superhuman mail", "openrouter", "openrouter inc"],
+    "subscriptions/software", { fixed: true }),
+  // Subscriptions (the rest; "apple.com/bill" could be any of Apple's services)
+  m(["amazon prime", "apple com bill", "apple.com/bill", "itunes", "google storage", "google one", "audible", "xbox",
+    "playstation network", "nintendo", "patreon", "icloud", "microsoft 365", "dropbox", "openai", "chatgpt"],
     "subscriptions", { fixed: true }),
   // Shopping
   m(["amazon", "amazon ca", "amazon.ca", "amzn", "amzn mktp", "amazon mktplace", "walmart", "canadian tire", "home depot",
