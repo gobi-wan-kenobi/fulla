@@ -3,6 +3,7 @@
 // transfer. Every name, amount and merchant here is invented.
 import { describe, expect, it } from "vitest";
 import { type ModelAnswer, modelOutcome } from "@/lib/categorizer";
+import { suggest } from "@/lib/categorize";
 import { sourceOf } from "@/lib/examples";
 import { buildImport, newAccounts, propose, type StatementLine } from "@/lib/importers";
 import type { Account, CategorizationRule, Category, Transaction } from "@/lib/model";
@@ -182,5 +183,24 @@ describe("the review queue by merchant", () => {
     expect(suggestionTag(GROCERIES.id).length).toBeLessThanOrEqual(30);
     expect(suggestedId(withSuggestion(tx("x", 1, "2030-01-01"), GROCERIES.id), CATEGORIES.map((c) => c.id))).toBe(GROCERIES.id);
     expect(withSuggestion(withSuggestion(tx("x", 1, "2030-01-01"), GROCERIES.id), null).tags).toEqual([REVIEW_TAG]);
+  });
+});
+
+describe("merchants added to the known list", () => {
+  const SUBS = category(id(907), "Subscriptions", "expense");
+  const cats = [...CATEGORIES, SUBS];
+  it("puts the developer and mail tools in Subscriptions and the meal kit in Groceries", () => {
+    for (const d of ["VERCEL INC COVINA CA", "MOZILLACORP EXAMPLE 0001", "Mozilla VPN", "SUPERHUMAN MAIL SAN FRANCISCO CA"]) {
+      expect(suggest(d, "expense", [], cats)).toMatchObject({ category: SUBS, source: "merchant" });
+    }
+    expect(suggest("COOKUNITY CA TORONTO", "expense", [], cats)).toMatchObject({ category: GROCERIES, source: "merchant" });
+    expect(suggest("EXAMPLE VERCELLI CAFE", "expense", [], cats)).toBeNull(); // whole words only
+  });
+
+  it("are suggested in review, sure and labelled as the list's, without filing the lines", () => {
+    const rows = [tx("COOKUNITY CA TORONTO", 10999, "2030-01-03"), tx("COOKUNITY CA TORONTO", 10999, "2030-01-10")].map(row);
+    const [g] = reviewGroups(rows, cats, []);
+    expect(g.suggestion).toMatchObject({ category: GROCERIES, source: "merchant", confidence: 1, lines: 2 });
+    expect(rows.every((r) => needsReview(r.tx) && r.tx.category_id === OTHER.id)).toBe(true);
   });
 });

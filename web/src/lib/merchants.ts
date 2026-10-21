@@ -32,6 +32,8 @@ export const KNOWN_MERCHANTS: KnownMerchant[] = [
     "maxi", "zehrs", "fortinos", "your independent grocer", "independent grocer", "valu mart", "foodland", "whole foods",
     "adonis", "nations fresh", "h mart", "galleria supermarket", "costco", "costco wholesale", "walmart supercentre",
     "bulk barn", "co op", "thrifty foods", "giant tiger"], "groceries"),
+  // Meal kits: Groceries (the starting categories have no Meal kits subcategory).
+  m(["cookunity", "cook unity"], "groceries"),
   // Eating out
   m(["tim hortons", "tims", "starbucks", "second cup", "mcdonald's", "mcdonalds", "a&w", "harvey's", "harveys", "wendy's",
     "wendys", "burger king", "subway", "pizza pizza", "domino's", "dominos", "pizza hut", "little caesars", "kfc", "popeyes",
@@ -53,7 +55,8 @@ export const KNOWN_MERCHANTS: KnownMerchant[] = [
   // Subscriptions
   m(["netflix", "spotify", "disney plus", "disneyplus", "disney+", "crave", "prime video", "amazon prime", "apple com bill",
     "apple.com/bill", "itunes", "google storage", "google one", "youtube premium", "youtubepremium", "audible", "xbox",
-    "playstation network", "nintendo", "patreon", "icloud", "microsoft 365", "dropbox", "paramount+", "openai", "chatgpt"],
+    "playstation network", "nintendo", "patreon", "icloud", "microsoft 365", "dropbox", "paramount+", "openai", "chatgpt",
+    "vercel", "vercel inc", "mozilla", "mozillacorp", "mozilla vpn", "superhuman", "superhuman mail"],
     "subscriptions", { fixed: true }),
   // Shopping
   m(["amazon", "amazon ca", "amazon.ca", "amzn", "amzn mktp", "amazon mktplace", "walmart", "canadian tire", "home depot",

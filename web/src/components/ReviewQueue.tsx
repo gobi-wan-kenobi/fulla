@@ -12,7 +12,7 @@ import type { LocalRow } from "@/lib/sync";
 
 const SOURCE: Record<SuggestionSource, string> = {
   rule: "by your rule",
-  merchant: "a shop Fulla knows",
+  merchant: "Fulla's known-merchant list",
   debt: "a debt repayment",
   categorizer: "the categorizer's guess",
   history: "what you chose before",
