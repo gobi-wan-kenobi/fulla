@@ -9,6 +9,7 @@ import {
 } from "@/lib/importers";
 import { type Account, type Category, type Transaction, isDebtAccount } from "@/lib/model";
 import { requireCurrency } from "@/lib/money";
+import { UNMATCHED_TAG } from "@/lib/review";
 import { groupOf } from "@/lib/networth";
 import { proposedStatementAccount } from "@/lib/statementAccount";
 import { rbcStyle, tangerineCardStyle, tangerineLocStyle, tdStyle, triangleStyle } from "./bankStatementFixtures";
@@ -172,6 +173,16 @@ describe("lines another file already brought in", () => {
     const out = markOverlap(proposeLines(lines), held, BANK.id);
     expect(out.overlapped).toBe(3);
     expect(out.proposals.map((p) => p.alreadyImported)).toEqual([true, false, true, true, false]);
+  });
+
+  it("leaves a transfer still waiting for its other statement to transfer matching, unless the texts agree", () => {
+    const waiting = { ...row(4, "2030-01-14", "transfer", 30000, "Online bill payment for EXAMPLE MASTERCARD"), tags: [UNMATCHED_TAG] };
+    // The card's statement: its payment line is the other leg, not the same line.
+    const card = markOverlap(proposeLines([{ date: "2030-01-14", amountMinor: -30000, description: "PAYMENT RECEIVED - THANK YOU", role: null }]), [waiting], BANK.id);
+    expect(card.overlapped).toBe(0);
+    // The bank's own statement after its CSV: the same line.
+    const bank = markOverlap(proposeLines([{ date: "2030-01-14", amountMinor: -30000, description: "Online bill payment for EXAMPLE MASTERCARD", role: null }]), [waiting], BANK.id);
+    expect(bank.overlapped).toBe(1);
   });
 
   it("does not take a row two days off when nothing in the text is the same", () => {

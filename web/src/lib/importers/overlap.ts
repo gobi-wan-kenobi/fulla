@@ -7,9 +7,13 @@
  * already there when the account has a row on the same day for the same
  * money (in or out), not yet claimed by another line of this import; a row
  * one or two days off counts only when the two texts share a word. Each row
- * answers for one line, so two equal coffees on one day stay two.
+ * answers for one line, so two equal coffees on one day stay two. A transfer
+ * still waiting for its other statement is that statement's line only when
+ * the texts share a word beyond the usual ones ("transfer", "payment"):
+ * otherwise it is the other leg, and transfer matching joins the two.
  */
 import type { Transaction } from "../model";
+import { UNMATCHED_TAG, hasTag } from "../review";
 import { normalizeName } from "../text";
 import type { ProposedTransaction } from "./plan";
 
@@ -25,9 +29,10 @@ export function signedOn(t: Transaction, accountId: string): number | null {
 }
 
 const words = (s: string) => new Set(normalizeName(s).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3));
-const shareWord = (a: string, b: string) => {
+const USUAL = new Set(["transfer", "transfers", "payment", "payments", "paiement", "received", "thank", "you", "merci", "online", "bill", "from", "into", "the", "account", "for", "out", "and", "money", "interac"]);
+const shareWord = (a: string, b: string, usual = false) => {
   const x = words(a);
-  for (const w of words(b)) if (x.has(w)) return true;
+  for (const w of words(b)) if (x.has(w) && (usual || !USUAL.has(w))) return true;
   return false;
 };
 const gap = (a: string, b: string) => Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400000;
@@ -43,7 +48,7 @@ export function markOverlap(proposals: ProposedTransaction[], rows: Transaction[
       if (p.alreadyImported) return;
       const want = p.line.amountMinor;
       const r = live.find((r) => !claimed.has(r.id) && signedOn(r, accountId) === want && gap(r.date, p.line.date) <= near &&
-        (near === 0 || shareWord(r.note, p.line.description)));
+        (r.kind === "transfer" && hasTag(r, UNMATCHED_TAG) ? shareWord(r.note, p.line.description) : near === 0 || shareWord(r.note, p.line.description, true)));
       if (!r) return;
       claimed.add(r.id);
       out[i] = { ...p, alreadyImported: true };
