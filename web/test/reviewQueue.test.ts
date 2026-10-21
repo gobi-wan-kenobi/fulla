@@ -135,9 +135,15 @@ describe("the review queue by merchant", () => {
       tx("Interac e-Transfer® Out to Example Friend", 3000, "2030-01-20"),
       tx("Interac e-Transfer® Out to Another Example", 1000, "2030-01-21"),
       tx("Interac e-Transfer® In from Example Friend", 500, "2030-01-22", { kind: "income", category_id: OTHER_IN.id }),
+      tx("Interac e-Transfer® Out", 700, "2030-01-23"),
+      tx("Interac e-Transfer® Out", 800, "2030-01-24"),
+      tx("Interac e-Transfer® Out", 900, "2030-01-25"),
     ].map(row);
     const g = reviewGroups(rows, CATEGORIES, []);
-    expect(g.map((x) => [x.person, x.count, x.side])).toEqual([[true, 2, "out"], [true, 1, "out"], [true, 1, "in"]]);
+    expect(g.map((x) => [x.person, x.count, x.side])).toEqual([[true, 3, "out"], [true, 2, "out"], [true, 1, "out"], [true, 1, "in"]]);
+    // No name on the statement: one group, a person's all the same, and no rule (it would match every e-Transfer).
+    expect(g[0]).toMatchObject({ label: "e-Transfer sent, no name on the statement", rulePattern: null });
+    g.shift();
     expect(g[0].label).toBe("e-Transfer to Example Friend"); // on the household's own screen only
     for (const x of g) {
       expect(x.publicLabel).toBe("e-Transfer to/from a person");

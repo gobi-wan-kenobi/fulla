@@ -63,12 +63,20 @@ export interface ReviewGroup<R extends { tx: Transaction } = { tx: Transaction }
 
 const sideOf = (t: Transaction): "out" | "in" => (t.kind === "income" ? "in" : "out");
 
-/** A line's merchant key: per person for an e-Transfer with one, else the merchant as rules name it. */
-export function merchantKey(t: Pick<Transaction, "kind" | "note">): { key: string; person: string | null; merchant: string } {
+/**
+ * A line's merchant key: per person for an e-Transfer (one group for those
+ * whose statement names nobody), else the merchant as rules name it.
+ */
+export function merchantKey(t: Pick<Transaction, "kind" | "note">): { key: string; withPerson: boolean; person: string | null; merchant: string } {
   const note = t.note ?? "";
-  const person = isTransferWithPerson(note) ? personOf(note) : null;
-  const merchant = person ? words(person) : cleanMerchant(note) || "";
-  return { key: `${t.kind === "income" ? "in" : "out"}|${person ? "p" : "m"}|${merchant}`, person, merchant };
+  const side = t.kind === "income" ? "in" : "out";
+  if (isTransferWithPerson(note)) {
+    const person = personOf(note);
+    const merchant = person ? words(person) : "";
+    return { key: `${side}|p|${merchant}`, withPerson: true, person, merchant };
+  }
+  const merchant = cleanMerchant(note) || "";
+  return { key: `${side}|m|${merchant}`, withPerson: false, person: null, merchant };
 }
 
 /** The longest run of the merchant's words that every note contains (as rules match, matchRule), or null. */
@@ -130,12 +138,12 @@ function lineSuggestion(t: Transaction, key: string, rules: CategorizationRule[]
 export function reviewGroups<R extends { tx: Transaction }>(rows: R[], categories: Category[], rules: CategorizationRule[], all: Transaction[] = rows.map((r) => r.tx)): ReviewGroup<R>[] {
   const ids = categories.map((c) => c.id);
   const past = history(all, categories);
-  const byKey = new Map<string, { rows: R[]; person: string | null; merchant: string }>();
+  const byKey = new Map<string, { rows: R[]; withPerson: boolean; person: string | null; merchant: string }>();
   for (const r of rows) {
     const t = r.tx;
     if (!needsReview(t) || !isCategorised(t.kind)) continue;
     const k = merchantKey(t);
-    const g = byKey.get(k.key) ?? { rows: [], person: k.person, merchant: k.merchant };
+    const g = byKey.get(k.key) ?? { rows: [], withPerson: k.withPerson, person: k.person, merchant: k.merchant };
     g.rows.push(r);
     byKey.set(k.key, g);
   }
@@ -163,19 +171,22 @@ export function reviewGroups<R extends { tx: Transaction }>(rows: R[], categorie
       lines: best[1].n,
     } : null;
     const towards = side === "out" ? "to" : "from";
+    const shop = merchantName(sorted[0].tx.note ?? "") || "No description";
+    const label = !g.withPerson ? shop : g.person ? `e-Transfer ${towards} ${g.person}` : `e-Transfer ${side === "out" ? "sent" : "received"}, no name on the statement`;
     groups.push({
       id: sha256Hex(key).slice(0, 16),
       side,
-      person: !!g.person,
-      label: g.person ? `e-Transfer ${towards} ${g.person}` : merchantName(sorted[0].tx.note ?? "") || "No description",
-      publicLabel: g.person ? "e-Transfer to/from a person" : merchantName(sorted[0].tx.note ?? "") || "No description",
+      person: g.withPerson,
+      label,
+      publicLabel: g.withPerson ? "e-Transfer to/from a person" : shop,
       rows: sorted,
       count: sorted.length,
       totalMinor: Math.abs(total),
       firstDate: sorted[sorted.length - 1].tx.date,
       lastDate: sorted[0].tx.date,
       suggestion,
-      rulePattern: g.person ? (normalizeName(g.person).length >= 2 ? normalizeName(g.person) : null) : rulePatternFor(g.merchant, sorted.map((r) => r.tx.note ?? "")),
+      // A rule for a person matches their name; with no name there is nothing safe to match (it would take every e-Transfer).
+      rulePattern: g.withPerson ? (g.person && normalizeName(g.person).length >= 2 ? normalizeName(g.person) : null) : rulePatternFor(g.merchant, sorted.map((r) => r.tx.note ?? "")),
     });
   }
   return groups.sort((a, b) => b.count - a.count || b.totalMinor - a.totalMinor || (a.publicLabel < b.publicLabel ? -1 : a.publicLabel > b.publicLabel ? 1 : 0) || (a.id < b.id ? -1 : 1));
