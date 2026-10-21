@@ -60,8 +60,10 @@ export const KNOWN_MERCHANTS: KnownMerchant[] = [
   m(["netflix", "spotify", "disney plus", "disneyplus", "disney+", "crave", "prime video", "primevideo", "amazon prime video",
     "apple tv+", "apple tv plus", "youtube premium", "youtubepremium", "apple music", "paramount+"],
     "subscriptions/streaming", { fixed: true }),
-  // Subscriptions › Software: developer tools, mail and browser services.
-  m(["vercel", "vercel inc", "mozilla", "mozillacorp", "mozilla vpn", "superhuman", "superhuman mail", "openrouter", "openrouter inc"],
+  // Subscriptions › Software: developer tools, hosting, AI services, mail, browser and online tools.
+  m(["vercel", "vercel inc", "mozilla", "mozillacorp", "mozilla vpn", "superhuman", "superhuman mail", "openrouter", "openrouter inc",
+    "digitalocean", "supabase", "anthropic", "godaddy", "linkedin", "nous research", "minimax agent", "dynalist", "dynalistinc",
+    "voyage ai"],
     "subscriptions/software", { fixed: true }),
   // Subscriptions (the rest; "apple.com/bill" could be any of Apple's services)
   m(["amazon prime", "apple com bill", "apple.com/bill", "itunes", "google storage", "google one", "audible", "xbox",

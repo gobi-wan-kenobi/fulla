@@ -48,6 +48,9 @@ describe("known merchants", () => {
     ["VERCEL INC COVINA CA", SOFTWARE], ["OPENROUTER INC NEW YORK NY", SOFTWARE], ["SUPERHUMAN MAIL SAN FRANCISCO", SOFTWARE], ["MOZILLACORP 0001", SOFTWARE],
     ["NETFLIX.COM 866-000-0000", STREAMING], ["Spotify P0000ABCD", STREAMING], ["DISNEY PLUS 0000", STREAMING], ["CRAVE 0000 TORONTO ON", STREAMING],
     ["PRIME VIDEO*AB12CD", STREAMING], ["APPLE TV+ 0000", STREAMING], ["YOUTUBE PREMIUM", STREAMING], ["APPLE MUSIC 0000", STREAMING],
+    ["DIGITALOCEAN.COM EXAMPLE CITY", SOFTWARE], ["SUPABASE EXAMPLE CITY", SOFTWARE], ["ANTHROPIC* CLAUDE SUB EXAMPLE", SOFTWARE],
+    ["PAYPAL *GODADDY.COM 0000000000", SOFTWARE], ["Linkedin P0000000000", SOFTWARE], ["NOUS RESEARCH INC. EXAMPLE", SOFTWARE],
+    ["MINIMAX AGENT EXAMPLE", SOFTWARE], ["PAYPAL *DYNALISTINC 0000000000", SOFTWARE], ["Voyage Ai", SOFTWARE],
     ["APPLE.COM/BILL 866-000-0000", SUBS], ["DROPBOX*AB12", SUBS],
   ])("%s → %s", (text, c) => expect(suggest(text, "expense", [], WITH)).toMatchObject({ category: c, source: "merchant" }));
 
@@ -62,6 +65,8 @@ describe("known merchants", () => {
   it("only clear descriptors: an ordinary word is not a service", () => {
     expect(knownMerchant("EXAMPLE APPLE ORCHARD")).toBeNull();
     expect(knownMerchant("EXAMPLE MUSIC SCHOOL")).toBeNull();
+    expect(knownMerchant("EXAMPLE VOYAGE TRAVEL")).toBeNull(); // "voyage ai" only
+    expect(knownMerchant("EXAMPLE MINIMAX TOYS")).toBeNull(); // "minimax agent" only
     expect(knownMerchant("EXAMPLE TV REPAIR")).toBeNull();
   });
 });
