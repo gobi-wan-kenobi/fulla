@@ -185,6 +185,21 @@ describe("lines another file already brought in", () => {
     expect(bank.overlapped).toBe(1);
   });
 
+  it("knows a transfer's other leg by the statement it was read from, whatever the texts say", () => {
+    const CARD = acct(302, "Example card", "credit_card", { last4: "2222" });
+    const fromBank = (n: number, date: string, kind: Transaction["kind"], amount: number, note: string, to: string | null): Transaction =>
+      ({ ...row(n, date, kind, amount, note), to_account_id: to, tags: ["fulla:st:000000000001:v1", ...(kind === "transfer" ? [UNMATCHED_TAG] : [])] });
+    const rows = [fromBank(5, "2030-01-14", "transfer", 30000, "Pre-authorized Debit to EXAMPLE CARD", CARD.id), fromBank(6, "2030-01-15", "expense", 900, "EXAMPLE SHOP", null)];
+    const card = markOverlap(propose({
+      householdId: HOUSEHOLD, accountId: CARD.id, lines: [{ date: "2030-01-14", amountMinor: 30000, description: "EXAMPLE CARD PAYMENT", role: null }], rules: [],
+      uncategorizedExpenseId: OTHER.id, uncategorizedIncomeId: OTHER_IN.id, payerMemberId: ALICE, defaultSplit: null, existingIds: new Set(), now: "2030-02-20T00:00:00.000Z",
+      names: { categories: [OTHER, OTHER_IN], members: [], accounts: [BANK, CARD] }, knownMerchants: true, knownTransfers: true,
+    }), rows, CARD.id);
+    expect(card.overlapped).toBe(0);
+    const bank = markOverlap(proposeLines([{ date: "2030-01-14", amountMinor: -30000, description: "Pre-authorized Debit to EXAMPLE CARD", role: null }]), rows, BANK.id);
+    expect(bank.overlapped).toBe(1);
+  });
+
   it("does not take a row two days off when nothing in the text is the same", () => {
     const out = markOverlap(proposeLines([{ date: "2030-01-11", amountMinor: -2500, description: "Something else", role: null }]),
       [row(3, "2030-01-09", "expense", 2500, "EXAMPLE BOOKS")], BANK.id);

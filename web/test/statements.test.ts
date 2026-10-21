@@ -219,5 +219,13 @@ describe("transfer matching", () => {
     const none = matchTransfers({ accountId: BANK_A, fresh: [], existing: twoOut, accounts: [...accounts, acct(SA, "Other account", "other"), acct(SB, "Other account 2", "other")] });
     expect(none.joined).toBe(0);
     expect(none.update).toHaveLength(0);
+
+    // A transfer on the stand-in turned into spending while still waiting for its other statement leaves it a stand-in.
+    const turned: Transaction = { ...base("00000000-0000-4000-8000-000000000505", SB, SB, "2030-01-20", "fp-e"), kind: "expense", to_account_id: null, category_id: GROCERIES };
+    const still = matchTransfers({ accountId: BANK_A, fresh: [], existing: [...rows, turned], accounts: [...accounts, acct(SA, "Other account", "other"), acct(SB, "Other account 2", "other")] });
+    expect(still.joined).toBe(1);
+    // Spending of its own, matched or never a transfer, makes it a real account: nothing is joined into it.
+    const real = matchTransfers({ accountId: BANK_A, fresh: [], existing: [...rows, { ...turned, tags: [] }], accounts: [...accounts, acct(SA, "Other account", "other"), acct(SB, "Other account 2", "other")] });
+    expect(real.joined).toBe(0);
   });
 });

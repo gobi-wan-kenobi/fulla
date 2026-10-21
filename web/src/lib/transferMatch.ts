@@ -96,7 +96,8 @@ export function matchTransfers(input: MatchInput): MatchResult {
   const X = input.accountId;
   const live = input.existing.filter((t) => t.status === "active");
   const byId = new Map(input.accounts.map((a) => [a.id, a]));
-  const spends = new Set([...live, ...input.fresh].filter((t) => t.kind !== "transfer" && t.account_id).map((t) => t.account_id!));
+  // A transfer turned into spending while still waiting for its other statement (it keeps the unmatched tag) does not make its account real.
+  const spends = new Set([...live, ...input.fresh].filter((t) => t.kind !== "transfer" && t.account_id && !hasTag(t, UNMATCHED_TAG)).map((t) => t.account_id!));
   /** An account with nothing but transfers on it: a stand-in for one whose statement has not been imported. */
   const standIn = (id: string | null) => !!id && id !== X && !spends.has(id);
   /** Could the stand-in `end` be the account `real`? */
